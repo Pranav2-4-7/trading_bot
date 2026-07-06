@@ -1,0 +1,113 @@
+2026-07-06 19:53:48,929 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'price': None, 'stopPrice': None}
+2026-07-06 19:53:48,930 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:53:49,566 - DEBUG - trading_bot - Time sync successful. Offset: 480 ms, RTT: 318 ms
+2026-07-06 19:53:49,777 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'newOrderRespType': 'RESULT', 'timestamp': 1783347830257}
+2026-07-06 19:53:49,778 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&newOrderRespType=RESULT&timestamp=1783347830257
+2026-07-06 19:53:49,995 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:53:49,995 - DEBUG - trading_bot - Response Body: {"orderId":19590139064,"symbol":"BTCUSDT","status":"FILLED","clientOrderId":"i3ILlaOKdq3LOHW03czidq","price":"0.00","origQty":"0.0010","executedQty":"0.0010","cumQty":"0.0010","timeInForce":"GTC","type":"MARKET","reduceOnly":false,"closePosition":false,"side":"BUY","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"MARKET","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"updateTime":1783347830150}
+2026-07-06 19:54:04,510 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'price': None, 'stopPrice': None}
+2026-07-06 19:54:04,510 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:54:04,736 - DEBUG - trading_bot - Time sync successful. Offset: 276 ms, RTT: 113 ms
+2026-07-06 19:54:04,949 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'newOrderRespType': 'RESULT', 'timestamp': 1783347845225}
+2026-07-06 19:54:04,949 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&newOrderRespType=RESULT&timestamp=1783347845225
+2026-07-06 19:54:05,157 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:54:05,157 - DEBUG - trading_bot - Response Body: {"orderId":19590200713,"symbol":"BTCUSDT","status":"FILLED","clientOrderId":"QASlGR4gaG0JwLw5IujXvw","price":"0.00","origQty":"0.0010","executedQty":"0.0010","cumQty":"0.0010","timeInForce":"GTC","type":"MARKET","reduceOnly":false,"closePosition":false,"side":"BUY","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"MARKET","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"updateTime":1783347845320}
+2026-07-06 19:54:05,158 - DEBUG - trading_bot - Querying placed order details for BTCUSDT ID 19590200713 to fetch avgPrice...
+2026-07-06 19:54:05,158 - INFO - trading_bot - API REQUEST | Method: GET | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'orderId': 19590200713, 'timestamp': 1783347845434}
+2026-07-06 19:54:05,158 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&orderId=19590200713&timestamp=1783347845434
+2026-07-06 19:54:05,418 - INFO - trading_bot - API RESPONSE | HTTP 400
+2026-07-06 19:54:05,418 - DEBUG - trading_bot - Response Body: {"code":-2013,"msg":"Order does not exist."}
+2026-07-06 19:54:05,419 - ERROR - trading_bot - Binance API Error -2013: Order does not exist.
+2026-07-06 19:54:05,419 - WARNING - trading_bot - Failed to query order details: Binance API Error -2013: Order does not exist.. Falling back to initial response.
+2026-07-06 19:55:37,531 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'price': None, 'stopPrice': None}
+2026-07-06 19:55:37,531 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:55:37,860 - DEBUG - trading_bot - Time sync successful. Offset: 328 ms, RTT: 164 ms
+2026-07-06 19:55:38,071 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'newOrderRespType': 'RESULT', 'timestamp': 1783347938399}
+2026-07-06 19:55:38,071 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&newOrderRespType=RESULT&timestamp=1783347938399
+2026-07-06 19:55:38,291 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:55:38,291 - DEBUG - trading_bot - Response Body: {"orderId":19590501413,"symbol":"BTCUSDT","status":"FILLED","clientOrderId":"m8MPBcDGd2QRKGsix1wYFy","price":"0.00","origQty":"0.0010","executedQty":"0.0010","cumQty":"0.0010","timeInForce":"GTC","type":"MARKET","reduceOnly":false,"closePosition":false,"side":"BUY","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"MARKET","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"updateTime":1783347938454}
+2026-07-06 19:55:38,293 - DEBUG - trading_bot - Querying placed order details for BTCUSDT ID 19590501413 (Attempt 1/3)...
+2026-07-06 19:55:38,293 - INFO - trading_bot - API REQUEST | Method: GET | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'orderId': 19590501413, 'timestamp': 1783347938621}
+2026-07-06 19:55:38,293 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&orderId=19590501413&timestamp=1783347938621
+2026-07-06 19:55:38,590 - INFO - trading_bot - API RESPONSE | HTTP 400
+2026-07-06 19:55:38,591 - DEBUG - trading_bot - Response Body: {"code":-2013,"msg":"Order does not exist."}
+2026-07-06 19:55:38,591 - ERROR - trading_bot - Binance API Error -2013: Order does not exist.
+2026-07-06 19:55:39,093 - DEBUG - trading_bot - Querying placed order details for BTCUSDT ID 19590501413 (Attempt 2/3)...
+2026-07-06 19:55:39,093 - INFO - trading_bot - API REQUEST | Method: GET | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'orderId': 19590501413, 'timestamp': 1783347939421}
+2026-07-06 19:55:39,093 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&orderId=19590501413&timestamp=1783347939421
+2026-07-06 19:55:39,325 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:55:39,325 - DEBUG - trading_bot - Response Body: {"orderId":19590501413,"symbol":"BTCUSDT","status":"FILLED","clientOrderId":"m8MPBcDGd2QRKGsix1wYFy","price":"0.00","avgPrice":"61953.200000","origQty":"0.0010","executedQty":"0.0010","cumQuote":"61.953200","timeInForce":"GTC","type":"MARKET","reduceOnly":false,"closePosition":false,"side":"BUY","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"MARKET","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"time":1783347938454,"updateTime":1783347938454}
+2026-07-06 19:56:16,822 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'SELL', 'type': 'LIMIT', 'quantity': 0.001, 'price': 90000.0, 'stopPrice': None}
+2026-07-06 19:56:16,822 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:56:17,048 - DEBUG - trading_bot - Time sync successful. Offset: 276 ms, RTT: 113 ms
+2026-07-06 19:56:17,264 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'side': 'SELL', 'type': 'LIMIT', 'quantity': 0.001, 'newOrderRespType': 'RESULT', 'price': 90000.0, 'timeInForce': 'GTC', 'timestamp': 1783347977539}
+2026-07-06 19:56:17,264 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&side=SELL&type=LIMIT&quantity=0.001&newOrderRespType=RESULT&price=90000.0&timeInForce=GTC&timestamp=1783347977539
+2026-07-06 19:56:17,477 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:56:17,477 - DEBUG - trading_bot - Response Body: {"orderId":19590634063,"symbol":"BTCUSDT","status":"NEW","clientOrderId":"iiWIn09mVzOyNF2aI7v3ud","price":"90000.00","origQty":"0.0010","executedQty":"0.0000","cumQty":"0.0000","timeInForce":"GTC","type":"LIMIT","reduceOnly":false,"closePosition":false,"side":"SELL","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"LIMIT","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"updateTime":1783347977639}
+2026-07-06 19:56:17,478 - DEBUG - trading_bot - Querying placed order details for BTCUSDT ID 19590634063 (Attempt 1/3)...
+2026-07-06 19:56:17,478 - INFO - trading_bot - API REQUEST | Method: GET | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'orderId': 19590634063, 'timestamp': 1783347977754}
+2026-07-06 19:56:17,478 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&orderId=19590634063&timestamp=1783347977754
+2026-07-06 19:56:17,782 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:56:17,782 - DEBUG - trading_bot - Response Body: {"orderId":19590634063,"symbol":"BTCUSDT","status":"NEW","clientOrderId":"iiWIn09mVzOyNF2aI7v3ud","price":"90000.00","avgPrice":"0.00","origQty":"0.0010","executedQty":"0.0000","cumQuote":"0.000000","timeInForce":"GTC","type":"LIMIT","reduceOnly":false,"closePosition":false,"side":"SELL","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"LIMIT","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"time":1783347977639,"updateTime":1783347977639}
+2026-07-06 19:56:28,449 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'STOP_MARKET', 'quantity': 0.001, 'price': None, 'stopPrice': 95000.0}
+2026-07-06 19:56:28,449 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:56:28,973 - DEBUG - trading_bot - Time sync successful. Offset: 425 ms, RTT: 262 ms
+2026-07-06 19:56:29,185 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'STOP_MARKET', 'quantity': 0.001, 'newOrderRespType': 'RESULT', 'stopPrice': 95000.0, 'timestamp': 1783347989610}
+2026-07-06 19:56:29,186 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&side=BUY&type=STOP_MARKET&quantity=0.001&newOrderRespType=RESULT&stopPrice=95000.0&timestamp=1783347989610
+2026-07-06 19:56:29,393 - INFO - trading_bot - API RESPONSE | HTTP 400
+2026-07-06 19:56:29,393 - DEBUG - trading_bot - Response Body: {"code":-4120,"msg":"Order type not supported for this endpoint. Please use the Algo Order API endpoints instead."}
+2026-07-06 19:56:29,393 - ERROR - trading_bot - Binance API Error -4120: Order type not supported for this endpoint. Please use the Algo Order API endpoints instead.
+2026-07-06 19:56:29,393 - ERROR - trading_bot - Exception occurred during order execution:
+Traceback (most recent call last):
+  File "C:\AntiGravity\trading_bot\bot\client.py", line 112, in send_signed_request
+    response.raise_for_status()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\AntiGravity\.venv\Lib\site-packages\requests\models.py", line 1167, in raise_for_status
+    raise HTTPError(http_error_msg, response=self)
+requests.exceptions.HTTPError: 400 Client Error: Bad Request for url: https://testnet.binancefuture.com/fapi/v1/order
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "C:\AntiGravity\trading_bot\cli.py", line 340, in main
+    response = place_order(client, validated_inputs)
+  File "C:\AntiGravity\trading_bot\bot\orders.py", line 32, in place_order
+    response = client.send_signed_request(
+        method="POST",
+        path="/fapi/v1/order",
+        params=params
+    )
+  File "C:\AntiGravity\trading_bot\bot\client.py", line 125, in send_signed_request
+    raise Exception(error_msg)
+Exception: Binance API Error -4120: Order type not supported for this endpoint. Please use the Algo Order API endpoints instead.
+2026-07-06 19:57:36,975 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'STOP_MARKET', 'quantity': 0.001, 'price': None, 'stopPrice': 95000.0}
+2026-07-06 19:57:36,975 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:57:37,554 - DEBUG - trading_bot - Time sync successful. Offset: 454 ms, RTT: 289 ms
+2026-07-06 19:57:37,774 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/algoOrder | Params: {'algoType': 'CONDITIONAL', 'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'STOP_MARKET', 'quantity': 0.001, 'triggerPrice': 95000.0, 'workingType': 'CONTRACT_PRICE', 'timestamp': 1783348058228}
+2026-07-06 19:57:37,774 - DEBUG - trading_bot - Raw query: algoType=CONDITIONAL&symbol=BTCUSDT&side=BUY&type=STOP_MARKET&quantity=0.001&triggerPrice=95000.0&workingType=CONTRACT_PRICE&timestamp=1783348058228
+2026-07-06 19:57:38,015 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:57:38,015 - DEBUG - trading_bot - Response Body: {"algoId":1000000127659582,"clientAlgoId":"wMoAW0bmIX3twt6a8eZpup","algoType":"CONDITIONAL","orderType":"STOP_MARKET","symbol":"BTCUSDT","side":"BUY","positionSide":"BOTH","timeInForce":"GTC","quantity":"0.0010","algoStatus":"NEW","triggerPrice":"95000.00","price":"0.00","icebergQuantity":null,"selfTradePreventionMode":"EXPIRE_MAKER","workingType":"CONTRACT_PRICE","priceMatch":"NONE","closePosition":false,"priceProtect":false,"reduceOnly":false,"createTime":1783348058153,"updateTime":1783348058153,"triggerTime":0,"goodTillDate":0}
+2026-07-06 19:59:27,930 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'price': None, 'stopPrice': None}
+2026-07-06 19:59:27,930 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:59:28,229 - DEBUG - trading_bot - Time sync successful. Offset: 314 ms, RTT: 149 ms
+2026-07-06 19:59:28,440 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'side': 'BUY', 'type': 'MARKET', 'quantity': 0.001, 'newOrderRespType': 'RESULT', 'timestamp': 1783348168754}
+2026-07-06 19:59:28,440 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&side=BUY&type=MARKET&quantity=0.001&newOrderRespType=RESULT&timestamp=1783348168754
+2026-07-06 19:59:28,649 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:59:28,649 - DEBUG - trading_bot - Response Body: {"orderId":19591277097,"symbol":"BTCUSDT","status":"FILLED","clientOrderId":"BN1l8LfHg6V0Jkqj0ylC6H","price":"0.00","origQty":"0.0010","executedQty":"0.0010","cumQty":"0.0010","timeInForce":"GTC","type":"MARKET","reduceOnly":false,"closePosition":false,"side":"BUY","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"MARKET","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"updateTime":1783348168812}
+2026-07-06 19:59:28,651 - DEBUG - trading_bot - Querying placed order details for BTCUSDT ID 19591277097 (Attempt 1/3)....
+2026-07-06 19:59:28,651 - INFO - trading_bot - API REQUEST | Method: GET | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'orderId': 19591277097, 'timestamp': 1783348168965}
+2026-07-06 19:59:28,651 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&orderId=19591277097&timestamp=1783348168965
+2026-07-06 19:59:28,868 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:59:28,868 - DEBUG - trading_bot - Response Body: {"orderId":19591277097,"symbol":"BTCUSDT","status":"FILLED","clientOrderId":"BN1l8LfHg6V0Jkqj0ylC6H","price":"0.00","avgPrice":"62114.800000","origQty":"0.0010","executedQty":"0.0010","cumQuote":"62.114800","timeInForce":"GTC","type":"MARKET","reduceOnly":false,"closePosition":false,"side":"BUY","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"MARKET","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"time":1783348168812,"updateTime":1783348168812}
+2026-07-06 19:59:33,639 - INFO - trading_bot - Initiating order request: {'symbol': 'BTCUSDT', 'side': 'SELL', 'type': 'LIMIT', 'quantity': 0.001, 'price': 91000.0, 'stopPrice': None}
+2026-07-06 19:59:33,639 - DEBUG - trading_bot - Syncing time with Binance server at https://testnet.binancefuture.com/fapi/v1/time...
+2026-07-06 19:59:34,155 - DEBUG - trading_bot - Time sync successful. Offset: 423 ms, RTT: 258 ms
+2026-07-06 19:59:34,377 - INFO - trading_bot - API REQUEST | Method: POST | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'side': 'SELL', 'type': 'LIMIT', 'quantity': 0.001, 'newOrderRespType': 'RESULT', 'price': 91000.0, 'timeInForce': 'GTC', 'timestamp': 1783348174800}
+2026-07-06 19:59:34,377 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&side=SELL&type=LIMIT&quantity=0.001&newOrderRespType=RESULT&price=91000.0&timeInForce=GTC&timestamp=1783348174800
+2026-07-06 19:59:34,577 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:59:34,577 - DEBUG - trading_bot - Response Body: {"orderId":19591293302,"symbol":"BTCUSDT","status":"NEW","clientOrderId":"q1hN8ZX2EutallY5JAUgIj","price":"91000.00","origQty":"0.0010","executedQty":"0.0000","cumQty":"0.0000","timeInForce":"GTC","type":"LIMIT","reduceOnly":false,"closePosition":false,"side":"SELL","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"LIMIT","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"updateTime":1783348174741}
+2026-07-06 19:59:34,578 - DEBUG - trading_bot - Querying placed order details for BTCUSDT ID 19591293302 (Attempt 1/3)....
+2026-07-06 19:59:34,578 - INFO - trading_bot - API REQUEST | Method: GET | Endpoint: /fapi/v1/order | Params: {'symbol': 'BTCUSDT', 'orderId': 19591293302, 'timestamp': 1783348175001}
+2026-07-06 19:59:34,578 - DEBUG - trading_bot - Raw query: symbol=BTCUSDT&orderId=19591293302&timestamp=1783348175001
+2026-07-06 19:59:35,038 - INFO - trading_bot - API RESPONSE | HTTP 200
+2026-07-06 19:59:35,038 - DEBUG - trading_bot - Response Body: {"orderId":19591293302,"symbol":"BTCUSDT","status":"NEW","clientOrderId":"q1hN8ZX2EutallY5JAUgIj","price":"91000.00","avgPrice":"0.00","origQty":"0.0010","executedQty":"0.0000","cumQuote":"0.000000","timeInForce":"GTC","type":"LIMIT","reduceOnly":false,"closePosition":false,"side":"SELL","positionSide":"BOTH","stopPrice":"0.00","workingType":"CONTRACT_PRICE","priceProtect":false,"origType":"LIMIT","priceMatch":"NONE","selfTradePreventionMode":"EXPIRE_MAKER","goodTillDate":0,"time":1783348174741,"updateTime":1783348174741}
