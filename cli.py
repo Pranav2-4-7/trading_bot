@@ -1,354 +1,185 @@
-import argparse
 import os
+import argparse
 import sys
-from typing import Optional, Tuple
 from dotenv import load_dotenv
+import questionary
+from curl_cffi import requests
 
+# Add root folder to sys.path to allow module imports
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from bot.logging_config import logger
 from bot.client import BinanceFuturesClient
-from bot.validators import (
-    validate_symbol,
-    validate_side,
-    validate_order_type,
-    validate_quantity,
-    validate_price,
-    validate_stop_price,
-    validate_all
-)
-from bot.orders import place_order, format_order_summary
-from bot.logging_config import setup_logging, mask_api_key
+from bot.orders import OrderManager
+from bot.validators import InputValidator
 
-# Check if questionary is available for advanced CLI UI
-try:
-    import questionary
-    from questionary import Validator, ValidationError
-    HAS_QUESTIONARY = True
-except ImportError:
-    HAS_QUESTIONARY = False
+# Load environment variables
+load_dotenv()
 
-# Setup logger for the CLI layer
-logger = setup_logging()
-
-# ==========================================
-# Questionary Validators (for Interactive Mode)
-# ==========================================
-if HAS_QUESTIONARY:
-    class QSymbolValidator(Validator):
-        def validate(self, document):
-            text = document.text.strip()
-            if not text:
-                raise ValidationError(message="Symbol cannot be empty.")
-            try:
-                validate_symbol(text)
-            except ValueError as e:
-                raise ValidationError(message=str(e))
-
-    class QSideValidator(Validator):
-        def validate(self, document):
-            text = document.text.strip()
-            try:
-                validate_side(text)
-            except ValueError as e:
-                raise ValidationError(message=str(e))
-
-    class QQuantityValidator(Validator):
-        def validate(self, document):
-            text = document.text.strip()
-            try:
-                validate_quantity(text)
-            except ValueError as e:
-                raise ValidationError(message=str(e))
-
-    class QPriceValidator(Validator):
-        def __init__(self, order_type: str):
-            self.order_type = order_type
-        def validate(self, document):
-            text = document.text.strip()
-            try:
-                validate_price(text, self.order_type)
-            except ValueError as e:
-                raise ValidationError(message=str(e))
-
-    class QStopPriceValidator(Validator):
-        def __init__(self, order_type: str):
-            self.order_type = order_type
-        def validate(self, document):
-            text = document.text.strip()
-            try:
-                validate_stop_price(text, self.order_type)
-            except ValueError as e:
-                raise ValidationError(message=str(e))
-
-
-def load_credentials(args) -> Tuple[Optional[str], Optional[str]]:
-    """Loads API key and Secret key from arguments, then dotenv, then environment."""
-    load_dotenv()
-    
-    api_key = args.api_key or os.getenv("BINANCE_API_KEY")
-    secret_key = args.secret_key or os.getenv("BINANCE_SECRET_KEY")
-    
-    return api_key, secret_key
-
-
-def run_interactive_mode(api_key: Optional[str], secret_key: Optional[str]) -> dict:
-    """Runs the enhanced interactive CLI menu for user inputs."""
-    print("\n=== Binance Futures Testnet Trading Bot (Interactive Mode) ===")
-    
-    # Prompt for credentials if missing
-    if not api_key:
-        if HAS_QUESTIONARY:
-            api_key = questionary.text("Enter Binance Futures Testnet API Key:").ask()
-        else:
-            api_key = input("Enter Binance Futures Testnet API Key: ")
-            
-    if not secret_key:
-        if HAS_QUESTIONARY:
-            secret_key = questionary.password("Enter Binance Futures Testnet Secret Key:").ask()
-        else:
-            import getpass
-            secret_key = getpass.getpass("Enter Binance Futures Testnet Secret Key: ")
-            
-    if not api_key or not secret_key:
-        print("Error: API Key and Secret Key are required to continue.")
-        sys.exit(1)
-        
-    if HAS_QUESTIONARY:
-        # Prompt for parameters using Questionary's beautiful inputs
-        symbol = questionary.text(
-            "Enter Trading Symbol (e.g., BTCUSDT, ETHUSDT):",
-            default="BTCUSDT",
-            validate=QSymbolValidator
-        ).ask()
-        
-        side = questionary.select(
-            "Select Side:",
-            choices=["BUY", "SELL"]
-        ).ask()
-        
-        order_type = questionary.select(
-            "Select Order Type:",
-            choices=["MARKET", "LIMIT", "STOP_MARKET"]
-        ).ask()
-        
-        quantity = questionary.text(
-            "Enter Quantity:",
-            validate=QQuantityValidator
-        ).ask()
-        
-        price = None
-        if order_type == "LIMIT":
-            price = questionary.text(
-                "Enter Limit Price:",
-                validate=QPriceValidator(order_type)
-            ).ask()
-            
-        stop_price = None
-        if order_type == "STOP_MARKET":
-            stop_price = questionary.text(
-                "Enter Stop Price:",
-                validate=QStopPriceValidator(order_type)
-            ).ask()
-            
-        # Confirm placing order
-        confirm = questionary.confirm(
-            f"Are you sure you want to place this {order_type} {side} order for {quantity} {symbol}?",
-            default=True
-        ).ask()
-        
-        if not confirm:
-            print("Order placement cancelled by user.")
-            sys.exit(0)
-            
-    else:
-        # Fallback to simple line-input with validator loops
-        print("\n(Note: questionary library not found. Falling back to standard prompts.)")
-        
-        # Symbol
-        while True:
-            try:
-                symbol = input("Enter Symbol (default: BTCUSDT): ").strip() or "BTCUSDT"
-                validate_symbol(symbol)
-                break
-            except ValueError as e:
-                print(f"Error: {e}")
-                
-        # Side
-        while True:
-            try:
-                side = input("Enter Side (BUY/SELL): ").strip()
-                validate_side(side)
-                break
-            except ValueError as e:
-                print(f"Error: {e}")
-                
-        # Order Type
-        while True:
-            try:
-                order_type = input("Enter Order Type (MARKET/LIMIT/STOP_MARKET): ").strip()
-                validate_order_type(order_type)
-                break
-            except ValueError as e:
-                print(f"Error: {e}")
-                
-        # Quantity
-        while True:
-            try:
-                quantity = input("Enter Quantity: ").strip()
-                validate_quantity(quantity)
-                break
-            except ValueError as e:
-                print(f"Error: {e}")
-                
-        # Price
-        price = None
-        if order_type.upper() == "LIMIT":
-            while True:
-                try:
-                    price = input("Enter Limit Price: ").strip()
-                    validate_price(price, order_type)
-                    break
-                except ValueError as e:
-                    print(f"Error: {e}")
-                    
-        # Stop Price
-        stop_price = None
-        if order_type.upper() == "STOP_MARKET":
-            while True:
-                try:
-                    stop_price = input("Enter Stop Price: ").strip()
-                    validate_stop_price(stop_price, order_type)
-                    break
-                except ValueError as e:
-                    print(f"Error: {e}")
-                    
-        # Confirmation
-        confirm = input(f"Confirm {order_type} {side} order of {quantity} {symbol}? (y/N): ").strip().lower()
-        if confirm not in ['y', 'yes']:
-            print("Order cancelled.")
-            sys.exit(0)
-            
-    # Run validation check one final time to construct typed inputs
+def get_current_mark_price(symbol: str) -> float:
+    """Fetches the current mark price of the futures contract."""
     try:
-        validated_inputs = validate_all(
-            symbol=symbol,
-            side=side,
-            order_type=order_type,
-            quantity=quantity,
-            price=price,
-            stop_price=stop_price
-        )
-        return validated_inputs, api_key, secret_key
-    except ValueError as e:
-        print(f"Validation failed: {e}")
-        sys.exit(1)
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Binance Futures Testnet (USDT-M) Trading Bot CLI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Run interactively (will prompt for missing details)
-  python cli.py
-
-  # Place a MARKET BUY order
-  python cli.py --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001
-
-  # Place a LIMIT SELL order
-  python cli.py --symbol BTCUSDT --side SELL --type LIMIT --quantity 0.001 --price 65000
-
-  # Place a STOP_MARKET BUY order (Stop Loss trigger)
-  python cli.py --symbol BTCUSDT --side BUY --type STOP_MARKET --quantity 0.001 --stop-price 60000
-"""
-    )
-    
-    # Order Parameters
-    parser.add_argument("--symbol", type=str, help="Trading Symbol (e.g. BTCUSDT)")
-    parser.add_argument("--side", type=str, choices=["BUY", "SELL", "buy", "sell"], help="Order side")
-    parser.add_argument("--type", type=str, choices=["MARKET", "LIMIT", "STOP_MARKET", "market", "limit", "stop_market"], help="Order type")
-    parser.add_argument("--quantity", type=str, help="Quantity to trade")
-    parser.add_argument("--price", type=str, help="Price (required for LIMIT orders)")
-    parser.add_argument("--stop-price", type=str, help="Stop price (required for STOP_MARKET orders)")
-    
-    # Configuration / Credentials
-    parser.add_argument("--api-key", type=str, help="Binance Futures Testnet API Key")
-    parser.add_argument("--secret-key", type=str, help="Binance Futures Testnet Secret Key")
-    parser.add_argument("-i", "--interactive", action="store_true", help="Force interactive mode")
-    
-    args = parser.parse_args()
-    
-    # Load API credentials
-    api_key, secret_key = load_credentials(args)
-    
-    # Determine if we should run in interactive mode:
-    # If explicitly requested, or if essential order fields are missing.
-    is_interactive = args.interactive or not all([args.symbol, args.side, args.type, args.quantity])
-    
-    if is_interactive:
-        validated_inputs, final_api_key, final_secret_key = run_interactive_mode(api_key, secret_key)
-    else:
-        # Enforce that credentials exist for non-interactive run
-        if not api_key or not secret_key:
-            print("Error: API Key and Secret Key are required. Provide them in CLI arguments or a .env file.")
-            sys.exit(1)
-            
-        final_api_key = api_key
-        final_secret_key = secret_key
-        
-        # Validate CLI parameters
-        try:
-            validated_inputs = validate_all(
-                symbol=args.symbol,
-                side=args.side,
-                order_type=args.type,
-                quantity=args.quantity,
-                price=args.price,
-                stop_price=args.stop_price
-            )
-        except ValueError as e:
-            print(f"\n[ERROR] Input Validation Failed: {e}")
-            logger.error(f"CLI Input Validation Failed: {e}")
-            sys.exit(1)
-            
-    # Print Order Request Summary (evaluator requirement)
-    print("\n=== Order Request Summary ===")
-    print(f"Symbol:     {validated_inputs['symbol']}")
-    print(f"Side:       {validated_inputs['side']}")
-    print(f"Type:       {validated_inputs['type']}")
-    print(f"Quantity:   {validated_inputs['quantity']}")
-    if validated_inputs['price'] is not None:
-        print(f"Price:      {validated_inputs['price']}")
-    if validated_inputs['stopPrice'] is not None:
-        print(f"Stop Price: {validated_inputs['stopPrice']}")
-    print("=============================\n")
-    
-    logger.info(f"Initiating order request: {validated_inputs}")
-    
-    # Initialize Client & Place Order
-    try:
-        # Initialize the API client
-        client = BinanceFuturesClient(api_key=final_api_key, secret_key=final_secret_key)
-        
-        # Test connection
-        print("Checking connection to Binance Futures Testnet...")
-        if not client.test_connection():
-            print("[WARNING] Could not connect or ping Binance Testnet server. Attempting order placement anyway...")
-        else:
-            print("Connection successful.")
-            
-        print("Placing order...")
-        response = place_order(client, validated_inputs)
-        
-        # Print success message and order details
-        print("\n[SUCCESS] Order placed successfully!")
-        summary_text = format_order_summary(response)
-        print(summary_text)
-        
+        url = f"https://fapi.binance.com/fapi/v1/premiumIndex?symbol={symbol.upper()}"
+        response = requests.get(url, timeout=10)
+        if response.status_code == 200:
+            return float(response.json().get("markPrice", 0.0))
     except Exception as e:
-        print(f"\n[FAILURE] Order execution failed: {e}")
-        logger.exception("Exception occurred during order execution:")
+        logger.error(f"Error fetching current price: {e}")
+    return 0.0
+
+def run_interactive_menu():
+    """Runs the CLI in interactive mode with questionary."""
+    print("=" * 60)
+    print("Welcome to the Binance Futures Testnet Trading Bot Interactive Terminal")
+    print("=" * 60)
+
+    # Secure credentials check/input
+    api_key = os.getenv("BINANCE_API_KEY")
+    secret_key = os.getenv("BINANCE_SECRET_KEY")
+
+    if not api_key:
+        api_key = questionary.text("Enter your Binance Futures Testnet API Key:").ask()
+    if not secret_key:
+        secret_key = questionary.password("Enter your Binance Futures Testnet Secret Key:").ask()
+
+    if not api_key or not secret_key:
+        print("Error: API Key and Secret Key are required to run the bot.")
         sys.exit(1)
 
+    # Setup client
+    client = BinanceFuturesClient(api_key, secret_key)
+    client.sync_clock()
+    order_manager = OrderManager(client)
+
+    # Questionary Inputs
+    symbol = questionary.text(
+        "Enter trading symbol (e.g. BTCUSDT, ETHUSDT):",
+        validate=lambda text: InputValidator.validate_symbol(text) or "Invalid symbol format. Symbol must end with USDT."
+    ).ask()
+
+    side = questionary.select(
+        "Select Side:",
+        choices=["BUY", "SELL"]
+    ).ask()
+
+    order_type = questionary.select(
+        "Select Order Type:",
+        choices=["MARKET", "LIMIT", "STOP_MARKET"]
+    ).ask()
+
+    quantity = questionary.text(
+        "Enter Quantity:",
+        validate=lambda text: InputValidator.validate_quantity(text) or "Quantity must be a positive number."
+    ).ask()
+
+    price = None
+    if order_type == "LIMIT":
+        price = questionary.text(
+            "Enter Limit Price:",
+            validate=lambda text: InputValidator.validate_price(text) or "Price must be a positive number."
+        ).ask()
+        price = float(price)
+
+    stop_price = None
+    if order_type == "STOP_MARKET":
+        current_price = get_current_mark_price(symbol)
+        if current_price > 0:
+            print(f"Current mark price for {symbol}: {current_price}")
+        
+        while True:
+            stop_price_str = questionary.text(
+                "Enter Stop Price:",
+                validate=lambda text: InputValidator.validate_stop_price(text) or "Stop price must be a positive number."
+            ).ask()
+            stop_price = float(stop_price_str)
+            
+            if current_price > 0:
+                if InputValidator.validate_stops(side, current_price, stop_price):
+                    break
+                else:
+                    print(f"Validation failed: For {side} orders, Stop Price must be "
+                          f"{'below' if side == 'BUY' else 'above'} the current price ({current_price}).")
+            else:
+                break
+
+    # Confirmation
+    confirm_text = f"Confirm Order: {side} {quantity} {symbol} ({order_type}"
+    if price:
+        confirm_text += f" @ {price}"
+    if stop_price:
+        confirm_text += f" trigger @ {stop_price}"
+    confirm_text += ")?"
+
+    confirm = questionary.confirm(confirm_text).ask()
+
+    if confirm:
+        print("Sending order to testnet...")
+        try:
+            order_manager.place_order(symbol, side, order_type, float(quantity), price, stop_price)
+        except Exception as e:
+            print(f"An error occurred: {e}")
+    else:
+        print("Order cancelled.")
+
+def run_direct_cli():
+    """Runs the CLI in direct headless mode with argparse."""
+    parser = argparse.ArgumentParser(description="Binance Futures Testnet Trading Bot CLI")
+    parser.add_argument("--symbol", type=str, required=True, help="Trading Symbol (e.g. BTCUSDT)")
+    parser.add_argument("--side", type=str, required=True, choices=["BUY", "SELL"], help="Trade Side")
+    parser.add_argument("--type", type=str, required=True, choices=["MARKET", "LIMIT", "STOP_MARKET"], help="Order Type")
+    parser.add_argument("--quantity", type=str, required=True, help="Order Quantity")
+    parser.add_argument("--price", type=str, help="Limit Price (Required for LIMIT orders)")
+    parser.add_argument("--stop-price", type=str, help="Stop Price (Required for STOP_MARKET orders)")
+
+    args = parser.parse_args()
+
+    # Validations
+    if not InputValidator.validate_symbol(args.symbol):
+        print(f"Error: Invalid Symbol: {args.symbol}")
+        sys.exit(1)
+    if not InputValidator.validate_quantity(args.quantity):
+        print(f"Error: Invalid Quantity: {args.quantity}")
+        sys.exit(1)
+
+    price_val = None
+    if args.type == "LIMIT":
+        if not args.price or not InputValidator.validate_price(args.price):
+            print("Error: Invalid or missing price parameter for LIMIT order.")
+            sys.exit(1)
+        price_val = float(args.price)
+
+    stop_price_val = None
+    if args.type == "STOP_MARKET":
+        if not args.stop_price or not InputValidator.validate_stop_price(args.stop_price):
+            print("Error: Invalid or missing stop price parameter for STOP_MARKET order.")
+            sys.exit(1)
+        stop_price_val = float(args.stop_price)
+
+        current_price = get_current_mark_price(args.symbol)
+        if current_price > 0 and not InputValidator.validate_stops(args.side, current_price, stop_price_val):
+            print(f"Error: Invalid stop price configuration. For {args.side} order, Stop Price must be "
+                  f"{'below' if args.side == 'BUY' else 'above'} current market price ({current_price}).")
+            sys.exit(1)
+
+    api_key = os.getenv("BINANCE_API_KEY")
+    secret_key = os.getenv("BINANCE_SECRET_KEY")
+
+    if not api_key or not secret_key:
+        print("Error: Environment variables BINANCE_API_KEY and BINANCE_SECRET_KEY must be set in direct CLI mode.")
+        sys.exit(1)
+
+    client = BinanceFuturesClient(api_key, secret_key)
+    client.sync_clock()
+    order_manager = OrderManager(client)
+
+    try:
+        order_manager.place_order(args.symbol, args.side, args.type, float(args.quantity), price_val, stop_price_val)
+    except Exception as e:
+        print(f"Execution Error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) > 1:
+        run_direct_cli()
+    else:
+        run_interactive_menu()
