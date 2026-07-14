@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TradingBOT Dashboard - Premium Multi-Agent Terminal</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Style -->
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="glass-bg"></div>
+    <div class="container">
+        <!-- HEADER -->
+        <header>
+            <div class="logo">
+                <i class="fa-solid fa-microchip-ai logo-icon"></i>
+                <div class="logo-text">
+                    <h1>Trading<span>BOT</span></h1>
+                    <p>QUANTITATIVE MULTI-AGENT TERMINAL</p>
+                </div>
+            </div>
+            <div class="controls">
+                <button id="run-bot-btn" class="btn btn-primary btn-glow">
+                    <i class="fa-solid fa-radar-range icon-scan"></i>
+                    <span>SCAN MARKET NOW</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- KPI SUMMARY GRID -->
+        <section class="kpi-grid">
+            <div class="kpi-card" id="kpi-net-return">
+                <div class="kpi-header">
+                    <span>NET RETURN</span>
+                    <i class="fa-solid fa-percent kpi-icon"></i>
+                </div>
+                <div class="kpi-value positive" id="val-net-return">+0.00%</div>
+                <div class="kpi-trend" id="trend-net-return">Agent is active</div>
+            </div>
+            <div class="kpi-card" id="kpi-total-val">
+                <div class="kpi-header">
+                    <span>PORTFOLIO VALUATION</span>
+                    <i class="fa-solid fa-wallet kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="val-total-val">INR 100,000.00</div>
+                <div class="kpi-trend">Cash + Open Holdings</div>
+            </div>
+            <div class="kpi-card" id="kpi-cash">
+                <div class="kpi-header">
+                    <span>CASH BALANCE</span>
+                    <i class="fa-solid fa-money-bill-wave kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="val-cash">INR 100,000.00</div>
+                <div class="kpi-trend">Available Liquidity</div>
+            </div>
+            <div class="kpi-card" id="kpi-win-rate">
+                <div class="kpi-header">
+                    <span>WIN RATE</span>
+                    <i class="fa-solid fa-chart-line-up kpi-icon"></i>
+                </div>
+                <div class="kpi-value" id="val-win-rate">0.00%</div>
+                <div class="kpi-trend" id="val-trades-count">0 Closed Trades</div>
+            </div>
+        </section>
+
+        <!-- CHARTS SECTION -->
+        <section class="charts-section">
+            <div class="card chart-card flex-double">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-chart-candlestick"></i> Market Analyzer</h3>
+                    <div class="header-controls" style="display:flex; gap:16px; align-items:center;">
+                        <div class="timeframe-selector">
+                            <button class="tf-btn" data-days="30">1M</button>
+                            <button class="tf-btn" data-days="180">6M</button>
+                            <button class="tf-btn active" data-days="365">1Yr</button>
+                            <button class="tf-btn" data-days="all">Max</button>
+                        </div>
+                        <div class="selector">
+                            <select id="ticker-select">
+                                <option value="INFY.NS">INFY.NS (Infosys)</option>
+                                <option value="RELIANCE.NS">RELIANCE.NS (Reliance)</option>
+                                <option value="TCS.NS">TCS.NS (TCS)</option>
+                                <option value="HDFCBANK.NS">HDFCBANK.NS (HDFC Bank)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="tickerChart"></canvas>
+                </div>
+                <div class="chart-legend-toggles">
+                    <label class="legend-checkbox"><input type="checkbox" id="toggle-price" checked> <span class="indicator-marker price"></span> Price on NSE</label>
+                    <label class="legend-checkbox"><input type="checkbox" id="toggle-dma50" checked> <span class="indicator-marker dma50"></span> 50 DMA</label>
+                    <label class="legend-checkbox"><input type="checkbox" id="toggle-dma200" checked> <span class="indicator-marker dma200"></span> 200 DMA</label>
+                    <label class="legend-checkbox"><input type="checkbox" id="toggle-volume" checked> <span class="indicator-marker volume"></span> Volume</label>
+                </div>
+            </div>
+            <div class="card chart-card">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-chart-area"></i> Equity Growth</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="equityChart"></canvas>
+                </div>
+            </div>
+        </section>
+
+        <!-- TABLES SECTION -->
+        <section class="tables-section">
+            <!-- Active Positions -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-briefcase"></i> Active Holdings</h3>
+                    <span class="badge" id="val-positions-count">0 Positions</span>
+                </div>
+                <div class="table-container">
+                    <table id="positions-table">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Entry Date</th>
+                                <th>Shares</th>
+                                <th>Entry Price</th>
+                                <th>Current Price</th>
+                                <th>PnL (Current)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="empty-row">
+                                <td colspan="6">No active positions. Trigger a scan or wait for signals.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Trade History -->
+            <div class="card">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-history"></i> Closed Transactions</h3>
+                </div>
+                <div class="table-container">
+                    <table id="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Ticker</th>
+                                <th>Entry Date</th>
+                                <th>Exit Date</th>
+                                <th>Buy Price</th>
+                                <th>Sell Price</th>
+                                <th>PnL</th>
+                                <th>Reason</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr class="empty-row">
+                                <td colspan="7">No closed transactions yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- AGENT RUN LOGS -->
+        <section class="terminal-section">
+            <div class="card terminal-card">
+                <div class="card-header">
+                    <h3><i class="fa-solid fa-terminal"></i> Multi-Agent Live Logs</h3>
+                    <button id="clear-logs" class="btn btn-secondary btn-sm">Clear</button>
+                </div>
+                <div class="terminal-body" id="log-output">
+                    [System] Terminal initialized. Waiting for agent scan commands...
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <!-- Script Application -->
+    <script src="/static/app.js"></script>
+</body>
+</html>
