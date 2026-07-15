@@ -7,7 +7,7 @@ let equityChart = null;
 let portfolio = null;
 let currentPrices = {}; // Cache of latest prices for PnL calculation
 let rawTickerData = []; // Store raw records fetched from API
-let currentTimeframeDays = 365; // Default 1Yr (365 calendar/trading days)
+let currentTimeframeDays = "all"; // Default Max (all cached intraday data)
 
 document.addEventListener("DOMContentLoaded", () => {
     // Initial fetch of portfolio status

@@ -64,35 +64,50 @@ def get_portfolio():
 @app.route("/api/ticker/<ticker>")
 def get_ticker_data(ticker):
     try:
-        # 1. Fetch latest 250 days directly from Yahoo Finance
-        df = yf.download(ticker, period="250d", interval="1d")
-        if df.empty:
-            return jsonify({"error": f"Failed to download live data for {ticker}"}), 500
-            
-        if isinstance(df.columns, pd.MultiIndex):
-            df.columns = df.columns.get_level_values(0)
-
-        df = df.reset_index()
-        df = df.sort_values("Date").reset_index(drop=True)
+        from live_paper_runner import LIVE_DATA_CACHE
         
-        # Format Date column as string YYYY-MM-DD
-        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+        # Check if the dataframe is already cached in memory
+        if ticker in LIVE_DATA_CACHE:
+            print(f"[Chart API] Serving {ticker} from live memory cache.")
+            df = LIVE_DATA_CACHE[ticker].copy()
+        else:
+            # Fallback to fetching directly from Yahoo Finance
+            print(f"[Chart API] Cache miss for {ticker}. Downloading 1m data.")
+            df = yf.download(ticker, period="3d", interval="1m")
+            if df.empty:
+                return jsonify({"error": f"Failed to download live data for {ticker}"}), 500
+                
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
 
-        # 2. Compute Technical Indicators (50 DMA and 200 DMA)
-        df["MA50"] = df["Close"].rolling(window=50).mean()
-        df["MA200"] = df["Close"].rolling(window=200).mean()
+            df = df.reset_index()
+            if "Datetime" in df.columns:
+                df = df.rename(columns={"Datetime": "Date"})
+            df["Date"] = pd.to_datetime(df["Date"])
+            
+            # Compute indicators
+            df["MA50"] = df["Close"].rolling(window=50).mean()
+            df["MA200"] = df["Close"].rolling(window=200).mean()
 
-        delta = df["Close"].diff()
-        gain = delta.where(delta > 0, 0)
-        loss = -delta.where(delta < 0, 0)
-        avg_gain = gain.rolling(window=14).mean()
-        avg_loss = loss.rolling(window=14).mean()
-        rs = avg_gain / avg_loss.replace(0, 0.001)
-        df["RSI14"] = 100 - (100 / (1 + rs))
+            delta = df["Close"].diff()
+            gain = delta.where(delta > 0, 0)
+            loss = -delta.where(delta < 0, 0)
+            avg_gain = gain.rolling(window=14).mean()
+            avg_loss = loss.rolling(window=14).mean()
+            rs = avg_gain / avg_loss.replace(0, 0.001)
+            df["RSI14"] = 100 - (100 / (1 + rs))
 
-        df["Volume_Ratio"] = df["Volume"] / df["Volume"].rolling(window=20).mean()
+            df["Volume_Ratio"] = df["Volume"] / df["Volume"].rolling(window=20).mean().replace(0, 1.0)
 
-        # 3. Merge latest fundamentals
+        # Ensure Date is timezone-naive and format as string
+        if df["Date"].dt.tz is not None:
+            df["Date"] = df["Date"].dt.tz_localize(None)
+            
+        df = df.sort_values("Date").reset_index(drop=True)
+        # Convert Date to string with time format %Y-%m-%d %H:%M:%S
+        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d %H:%M:%S")
+
+        # Merge fundamentals
         from data_scraper import IngestionAgent
         ingestion = IngestionAgent(output_dir=DATA_DIR)
         fund_df = ingestion.fetch_historical_fundamentals(ticker)
@@ -116,7 +131,8 @@ def get_ticker_data(ticker):
         # Replace NaNs with None/null for JSON conversion
         df = df.replace({np.nan: None})
 
-        records = df.to_dict(orient="records")
+        # Return the last 500 candles for clean UI rendering
+        records = df.tail(500).to_dict(orient="records")
         return jsonify(records)
         
     except Exception as e:
