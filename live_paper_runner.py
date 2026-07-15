@@ -199,13 +199,17 @@ def run_live_paper_trading(strategy=None):
             confidence = float(proba[0])
             print(f"{ticker} | Signal: {signal_val} | Confidence: {confidence:.2%}")
 
-            # BUY Decision
-            if signal_val == 1 and confidence >= strategy.buy_threshold and ticker not in execution.active_positions:
-                if not execution.is_in_cooldown(ticker, today_str, cooldown_days=0):
-                    allocation = risk.calculate_buy_allocation(
-                        execution.initial_capital, execution.current_cash
-                    )
-                    if allocation > 0:
+             # BUY Decision
+             print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={strategy.buy_threshold:.4f} | active_positions={list(execution.active_positions.keys())}")
+             if signal_val == 1 and confidence >= strategy.buy_threshold and ticker not in execution.active_positions:
+                 is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=0)
+                 print(f"  [DEBUG BUY] cooldown={is_cooldown}")
+                 if not is_cooldown:
+                     allocation = risk.calculate_buy_allocation(
+                         execution.initial_capital, execution.current_cash
+                     )
+                     print(f"  [DEBUG BUY] allocation={allocation} | current_cash={execution.current_cash}")
+                     if allocation > 0:
                         execution.buy_asset(ticker, today_str, current_price, allocation)
                 else:
                     print(f"  Buy signal ignored: {ticker} is in cooldown block.")
