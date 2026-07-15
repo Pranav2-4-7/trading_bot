@@ -102,6 +102,8 @@ def run_live_paper_trading(strategy=None):
             # Step C: Update the dataframe with the latest tick
             live_price = current_prices[ticker]
             last_row_date = df["Date"].iloc[-1]
+            if hasattr(last_row_date, "tzinfo") and last_row_date.tzinfo is not None:
+                last_row_date = last_row_date.tz_localize(None)
             
             # If the current minute is newer than the last row, append a new row
             if current_minute > last_row_date:
