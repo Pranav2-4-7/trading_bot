@@ -94,6 +94,8 @@ def run_live_paper_trading(strategy=None):
                 if "Datetime" in df.columns:
                     df = df.rename(columns={"Datetime": "Date"})
                 df["Date"] = pd.to_datetime(df["Date"])
+                if df["Date"].dt.tz is not None:
+                    df["Date"] = df["Date"].dt.tz_localize(None)
                 LIVE_DATA_CACHE[ticker] = df
 
             # Step B: Get cached dataframe
