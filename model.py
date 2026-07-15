@@ -134,6 +134,7 @@ class StrategyAgent:
         X = current_features_df[self.feature_cols]
         proba = self.model.predict_proba(X)[:, 1]
         signal = (proba >= self.buy_threshold).astype(int)
+        print(f"[Brain Predict] Ticker: {df['Ticker'].iloc[0]} | Proba: {proba[0]:.4f} | Buy Threshold: {self.buy_threshold:.4f} | Signal: {signal[0]}")
         return signal, proba
 
 
