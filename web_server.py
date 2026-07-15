@@ -198,11 +198,10 @@ if __name__ == "__main__":
     os.makedirs(os.path.join(BASE_DIR, "templates"), exist_ok=True)
     os.makedirs(os.path.join(BASE_DIR, "static"), exist_ok=True)
     
-    # Start the scheduler thread (handles reloader re-execution safe)
-    if os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not app.debug:
-        scheduler_thread = threading.Thread(target=background_scheduler, daemon=True)
-        scheduler_thread.start()
+    # Start the scheduler thread
+    scheduler_thread = threading.Thread(target=background_scheduler, daemon=True)
+    scheduler_thread.start()
 
     print("Starting TradingBOT Web Dashboard server...")
     print("Access the dashboard at http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=True)
+    app.run(host="127.0.0.1", port=5000, debug=True, use_reloader=False)
