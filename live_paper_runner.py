@@ -96,6 +96,7 @@ def run_live_paper_trading(strategy=None):
                 df["Date"] = pd.to_datetime(df["Date"])
                 if df["Date"].dt.tz is not None:
                     df["Date"] = df["Date"].dt.tz_localize(None)
+                df["Ticker"] = ticker
                 LIVE_DATA_CACHE[ticker] = df
 
             # Step B: Get cached dataframe
@@ -115,7 +116,8 @@ def run_live_paper_trading(strategy=None):
                     "High": live_price,
                     "Low": live_price,
                     "Close": live_price,
-                    "Volume": 0 # We will accumulate volume in future iterations if needed
+                    "Volume": 0, # We will accumulate volume in future iterations if needed
+                    "Ticker": ticker
                 }
                 df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
             else:
