@@ -39,6 +39,7 @@ class ExecutionAgent:
 
         with open(filepath, "r") as f:
             state = json.load(f)
+        print(f"[Broker Load] Loaded state from {filepath}: {state}")
 
         self.initial_capital = state.get("initial_capital", self.initial_capital)
         self.current_cash = state.get("current_cash", self.current_cash)
