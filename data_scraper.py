@@ -11,11 +11,12 @@ class IngestionAgent:
             os.makedirs(self.output_dir)
 
     def download_historical_data(self, tickers, start_date, end_date):
-        """Downloads daily historical data and saves to raw CSV files."""
+        """Downloads 1-minute historical data for the last 7 days and saves to raw CSV files."""
         for ticker in tickers:
-            print(f"Downloading data for {ticker}...")
+            print(f"Downloading 1-minute data for {ticker}...")
             try:
-                df = yf.download(ticker, start=start_date, end=end_date)
+                # 1m data is only available for the last 7 days on yfinance
+                df = yf.download(ticker, period="7d", interval="1m")
 
                 if df.empty:
                     print(f"No data found for {ticker}")
@@ -25,6 +26,9 @@ class IngestionAgent:
                     df.columns = df.columns.get_level_values(0)
 
                 df = df.reset_index()
+                # Rename Datetime to Date for compatibility
+                if "Datetime" in df.columns:
+                    df = df.rename(columns={"Datetime": "Date"})
 
                 raw_path = os.path.join(self.output_dir, f"{ticker}_raw.csv")
                 df.to_csv(raw_path, index=False)
@@ -93,9 +97,9 @@ class IngestionAgent:
         # 8. Momentum (Rate of Change)
         df["ROC_10"] = (df["Close"] - df["Close"].shift(10)) / df["Close"].shift(10).replace(0, 0.001)
 
-        # 9. Target Variable: 1 if price goes up > 5% in the next 30 days, else 0
-        future_return = (df["Close"].shift(-30) - df["Close"]) / df["Close"]
-        df["Target"] = (future_return >= 0.05).astype(int)
+        # 9. Target Variable: 1 if price goes up > 0.20% in the next 15 minutes (15 bars), else 0
+        future_return = (df["Close"].shift(-15) - df["Close"]) / df["Close"]
+        df["Target"] = (future_return >= 0.0020).astype(int)
 
         # Drop rows where indicators or target couldn't be calculated (edges of data)
         df = df.dropna(subset=["MA200", "RSI14", "ATR", "ROC_10"])
@@ -170,6 +174,8 @@ class IngestionAgent:
             tech_df['Debt_to_Equity'] = 0.0
         else:
             tech_df['Date'] = pd.to_datetime(tech_df['Date'])
+            if tech_df['Date'].dt.tz is not None:
+                tech_df['Date'] = tech_df['Date'].dt.tz_localize(None)
             fund_df['Date'] = pd.to_datetime(fund_df['Date'])
             
             tech_df = tech_df.sort_values('Date')
@@ -181,7 +187,7 @@ class IngestionAgent:
             merged_df['Net_Profit_Margin'] = merged_df['Net_Profit_Margin'].ffill().bfill().fillna(0.0)
             merged_df['Debt_to_Equity'] = merged_df['Debt_to_Equity'].ffill().bfill().fillna(0.0)
             
-            merged_df['Date'] = merged_df['Date'].dt.strftime('%Y-%m-%d')
+            merged_df['Date'] = merged_df['Date'].dt.strftime('%Y-%m-%d %H:%M:%S')
             tech_df = merged_df
             
         hybrid_path = os.path.join(self.output_dir, f"{ticker}_hybrid_features.csv")

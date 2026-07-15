@@ -3,6 +3,8 @@ import sys
 import pandas as pd
 import yfinance as yf
 import datetime
+import urllib.request
+import json
 
 # Add current folder to path to allow importing adjacent modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -11,13 +13,16 @@ from data_scraper import IngestionAgent
 from model import StrategyAgent
 from paper_broker import ExecutionAgent, RiskAgent
 
-def run_live_paper_trading():
-    """Fetches real-time/live market metrics, evaluates risk, runs model predictions, and records paper trades."""
+# Global cache to persist historical dataframes and avoid yfinance rate-limiting
+LIVE_DATA_CACHE = {}
+
+def run_live_paper_trading(strategy=None):
+    global LIVE_DATA_CACHE
     tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
     portfolio_file = "data/live_paper_portfolio.json"
 
     print("==================================================")
-    print("LIVE PAPER TRADING BOT RUNNER")
+    print("LIVE PAPER TRADING BOT RUNNER (2-SEC SCALPER)")
     print("==================================================")
 
     # 1. Initialize execution and risk agents, load portfolio state
@@ -25,44 +30,91 @@ def run_live_paper_trading():
     execution.load_state(portfolio_file)
     risk = RiskAgent(stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20)
 
-    # 2. Initialize and train Strategy Agent on existing historical data
-    print("Initializing Strategy Agent (ML Brain)...")
-    strategy = StrategyAgent(tickers, data_dir="data")
-    strategy.train_model()
+    # 2. Fallback/Safety model training
+    if strategy is None:
+        print("Initializing Strategy Agent (ML Brain) in fallback mode...")
+        strategy = StrategyAgent(tickers, data_dir="data")
+        strategy.train_model()
+
+    # 3. Fetch latest quotes from the public REST API in one batch request
+    current_prices = {}
+    try:
+        # Request batch quotes from the free API
+        url = "http://65.0.104.9/stock/list?symbols=RELIANCE,TCS,INFY,HDFCBANK&res=num"
+        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req) as response:
+            res_data = json.loads(response.read().decode())
+            if res_data.get("status") == "success":
+                for stock_info in res_data.get("stocks", []):
+                    sym = stock_info["symbol"]
+                    ticker = f"{sym}.NS"
+                    current_prices[ticker] = float(stock_info["last_price"])
+    except Exception as e:
+        print(f"Error fetching batch quotes from public REST API: {e}")
+
+    # If API call failed completely, fallback to last known prices
+    if not current_prices:
+        print("Warning: REST API call failed. Skipping this tick.")
+        return
+
+    # Use current datetime stamp for trade logs
+    today_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    current_minute = datetime.datetime.now().replace(second=0, microsecond=0)
 
     # Ingestion Agent for fundamental fetching
     ingestion = IngestionAgent(output_dir="data")
-
-    # Get today's date in YYYY-MM-DD
-    today_str = datetime.date.today().strftime('%Y-%m-%d')
-    print(f"\nProcessing Today's Market Tick: {today_str}")
-
-    # Store today's live prices and features for checking risk / new signals
-    current_prices = {}
     today_features = {}
 
-    # 3. Fetch latest live prices & fundamentals, build current feature rows
+    # 4. Update dataframes and compute technicals using the global cache
     for ticker in tickers:
-        print(f"\nFetching live data for {ticker}...")
         try:
-            # Fetch last 250 days of daily data to have enough rows for rolling 200 DMA calculations
-            df = yf.download(ticker, period="250d", interval="1d")
-            if df.empty:
-                print(f"Failed to fetch live prices for {ticker}")
-                continue
+            # Step A: Download historical 1m data once if not cached
+            if ticker not in LIVE_DATA_CACHE:
+                print(f"Downloading historical 1-minute data for {ticker} to seed cache...")
+                # Download last 5 days of 1-minute data
+                df = yf.download(ticker, period="5d", interval="1m")
+                if df.empty:
+                    print(f"Failed to seed cache for {ticker}")
+                    continue
+                if isinstance(df.columns, pd.MultiIndex):
+                    df.columns = df.columns.get_level_values(0)
+                df = df.reset_index()
+                if "Datetime" in df.columns:
+                    df = df.rename(columns={"Datetime": "Date"})
+                df["Date"] = pd.to_datetime(df["Date"])
+                LIVE_DATA_CACHE[ticker] = df
 
-            if isinstance(df.columns, pd.MultiIndex):
-                df.columns = df.columns.get_level_values(0)
+            # Step B: Get cached dataframe
+            df = LIVE_DATA_CACHE[ticker].copy()
 
-            df = df.reset_index()
-            df = df.sort_values("Date").reset_index(drop=True)
+            # Step C: Update the dataframe with the latest tick
+            live_price = current_prices[ticker]
+            last_row_date = df["Date"].iloc[-1]
             
-            # Today's close price (or last active trading session's close)
-            latest_row = df.iloc[-1]
-            current_price = float(latest_row["Close"])
-            current_prices[ticker] = current_price
-            
-            # Compute technical features (50 DMA and 200 DMA)
+            # If the current minute is newer than the last row, append a new row
+            if current_minute > last_row_date:
+                new_row = {
+                    "Date": current_minute,
+                    "Open": live_price,
+                    "High": live_price,
+                    "Low": live_price,
+                    "Close": live_price,
+                    "Volume": 0 # We will accumulate volume in future iterations if needed
+                }
+                df = pd.concat([df, pd.DataFrame([new_row])], ignore_index=True)
+            else:
+                # Still in the same minute, update the last row's Close, High, Low
+                idx = df.index[-1]
+                df.at[idx, "Close"] = live_price
+                if live_price > df.at[idx, "High"]:
+                    df.at[idx, "High"] = live_price
+                if live_price < df.at[idx, "Low"]:
+                    df.at[idx, "Low"] = live_price
+
+            # Save the updated dataframe back to cache
+            LIVE_DATA_CACHE[ticker] = df
+
+            # Step D: Compute technical indicators on the updated dataframe
             df["MA50"] = df["Close"].rolling(window=50).mean()
             df["MA200"] = df["Close"].rolling(window=200).mean()
 
@@ -74,40 +126,9 @@ def run_live_paper_trading():
             rs = avg_gain / avg_loss.replace(0, 0.001)
             df["RSI14"] = 100 - (100 / (1 + rs))
 
-            df["Volume_Ratio"] = df["Volume"] / df["Volume"].rolling(window=20).mean()
+            df["Volume_Ratio"] = df["Volume"] / df["Volume"].rolling(window=20).mean().replace(0, 1.0)
 
-            # MACD
-            ema12 = df["Close"].ewm(span=12, adjust=False).mean()
-            ema26 = df["Close"].ewm(span=26, adjust=False).mean()
-            df["MACD"] = ema12 - ema26
-            df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
-            df["MACD_Hist"] = df["MACD"] - df["MACD_Signal"]
-
-            # Bollinger Bands
-            sma20 = df["Close"].rolling(window=20).mean()
-            std20 = df["Close"].rolling(window=20).std()
-            upper_bb = sma20 + 2 * std20
-            lower_bb = sma20 - 2 * std20
-            df["BB_Upper_Dist"] = (df["Close"] - upper_bb) / upper_bb
-            df["BB_Lower_Dist"] = (df["Close"] - lower_bb) / lower_bb
-            df["BB_Width"] = (upper_bb - lower_bb) / sma20
-
-            # ATR
-            tr1 = df["High"] - df["Low"]
-            tr2 = (df["High"] - df["Close"].shift(1)).abs()
-            tr3 = (df["Low"] - df["Close"].shift(1)).abs()
-            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
-            df["ATR"] = tr.rolling(window=14).mean()
-            df["ATR_Ratio"] = df["ATR"] / df["Close"]
-
-            # Distance from MAs
-            df["Dist_MA50"] = (df["Close"] - df["MA50"]) / df["MA50"]
-            df["Dist_MA200"] = (df["Close"] - df["MA200"]) / df["MA200"]
-
-            # Momentum ROC
-            df["ROC_10"] = (df["Close"] - df["Close"].shift(10)) / df["Close"].shift(10).replace(0, 0.001)
-
-            # Today's technical row
+            # Today's technical row (last row of calculated features)
             tech_row = df.iloc[-1:].copy()
 
             # Fetch fundamentals
@@ -123,13 +144,16 @@ def run_live_paper_trading():
             tech_row["Net_Profit_Margin"] = net_profit_margin
             tech_row["Debt_to_Equity"] = debt_to_equity
 
+            # Format Date column back to string format for StrategyAgent
+            tech_row["Date"] = tech_row["Date"].dt.strftime('%Y-%m-%d %H:%M:%S')
+
             today_features[ticker] = tech_row
-            print(f"Current price for {ticker}: INR {current_price:.2f}")
+            print(f"Current price for {ticker}: INR {live_price:.2f}")
 
         except Exception as e:
-            print(f"Error fetching live data for {ticker}: {e}")
+            print(f"Error processing live data for {ticker}: {e}")
 
-    # 4. Risk Agent Check: Evaluate active positions first
+    # 5. Risk Agent Check: Evaluate active positions first
     print("\n[Risk Check] Evaluating active positions...")
     for ticker in list(execution.active_positions.keys()):
         if ticker in current_prices:
@@ -142,7 +166,7 @@ def run_live_paper_trading():
             if should_sell:
                 execution.sell_asset(ticker, today_str, current_price, reason=reason)
 
-    # 5. Strategy & Decision Execution: Process signals
+    # 6. Strategy & Decision Execution: Process signals
     print("\n[Strategy Check] Evaluating model signals...")
     for ticker in tickers:
         if ticker not in today_features or ticker not in current_prices:
@@ -168,14 +192,13 @@ def run_live_paper_trading():
                 else:
                     print(f"  Buy signal ignored: {ticker} is in 10-day cooldown block.")
 
-
         except Exception as e:
             print(f"Error predicting signal for {ticker}: {e}")
 
-    # 6. Save State
+    # 7. Save State
     execution.save_state(portfolio_file)
 
-    # 7. Print Console Dashboard
+    # 8. Print Console Dashboard
     current_portfolio_value = execution.get_portfolio_value(current_prices)
     net_return = ((current_portfolio_value - execution.initial_capital) / execution.initial_capital) * 100
 

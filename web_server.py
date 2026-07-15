@@ -138,12 +138,15 @@ def get_logs():
     except Exception as e:
         return jsonify({"logs": f"Error reading logs: {e}"})
 
+# Global Strategy Agent instance
+global_strategy = None
+
 @app.route("/api/run_bot", methods=["POST"])
 def trigger_bot_run():
     old_stdout = sys.stdout
     sys.stdout = buffer = io.StringIO()
     try:
-        run_live_paper_trading()
+        run_live_paper_trading(strategy=global_strategy)
         logs = buffer.getvalue()
         return jsonify({"status": "success", "logs": logs})
     except Exception as e:
@@ -153,19 +156,26 @@ def trigger_bot_run():
         sys.stdout = old_stdout
 
 def background_scheduler():
-    """Background daemon thread to execute live paper trading scan cycles every 30 seconds."""
-    print("[Scheduler] Background agent scheduler thread active. Scanning every 30 seconds.")
+    """Background daemon thread to execute live paper trading scan cycles every 2 seconds."""
+    global global_strategy
+    print("Pre-training Strategy Agent (ML Brain) on startup...")
+    tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+    from model import StrategyAgent
+    global_strategy = StrategyAgent(tickers, data_dir=DATA_DIR)
+    global_strategy.train_model()
+
+    print("[Scheduler] Background agent scheduler thread active. Scanning every 2 seconds.")
     # Run once at startup (sleep a few seconds first to let flask bind)
     time.sleep(5)
     while True:
         try:
             print(f"\n[Scheduler] Triggering automatic market scan at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
-            run_live_paper_trading()
+            run_live_paper_trading(strategy=global_strategy)
             print("[Scheduler] Automatic market scan completed successfully.")
         except Exception as e:
             print(f"[Scheduler Error] Auto scan failed: {e}")
-        # Sleep for 30 seconds
-        time.sleep(30)
+        # Sleep for 2 seconds
+        time.sleep(2)
 
 if __name__ == "__main__":
     os.makedirs(os.path.join(BASE_DIR, "templates"), exist_ok=True)

@@ -29,7 +29,9 @@ class StrategyAgent:
         if combined_df.empty:
             raise ValueError("No feature data found. Please run the data scraper script first.")
             
+        combined_df["Date"] = pd.to_datetime(combined_df["Date"])
         combined_df = combined_df.sort_values("Date").reset_index(drop=True)
+        combined_df["Date"] = combined_df["Date"].dt.strftime("%Y-%m-%d %H:%M:%S")
         return combined_df
 
     def train_model(self):
