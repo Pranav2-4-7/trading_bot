@@ -44,7 +44,7 @@ def run_live_paper_trading(strategy=None):
     try:
         import requests
         url = "http://65.0.104.9/stock/list?symbols=RELIANCE,TCS,INFY,HDFCBANK&res=num"
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=1.5)
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}, timeout=5.0)
         if response.status_code == 200:
             res_data = response.json()
             if res_data.get("status") == "success":
