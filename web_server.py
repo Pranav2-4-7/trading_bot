@@ -55,6 +55,7 @@ def index():
 @app.route("/api/portfolio")
 def get_portfolio():
     import json
+    print(f"[API Portfolio] Resolving PORTFOLIO_FILE: {os.path.abspath(PORTFOLIO_FILE)} | exists: {os.path.exists(PORTFOLIO_FILE)}")
     if not os.path.exists(PORTFOLIO_FILE):
         return jsonify({"error": "Portfolio file not found. Run the bot first."}), 404
         
