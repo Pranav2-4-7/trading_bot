@@ -88,7 +88,7 @@ class StrategyAgent:
                 best_threshold = th
                 
         print(f"Optimized Decision Threshold (based on validation set): {best_threshold:.4f} (Validation F1: {best_f1:.2%})")
-        self.buy_threshold = float(best_threshold)
+        self.buy_threshold = 0.35  # Overridden to aggressive 0.35 for active intraday scalping
 
         # Train final model on full training set using optimized parameters
         self.model = XGBClassifier(

@@ -183,14 +183,14 @@ def run_live_paper_trading(strategy=None):
 
             # BUY Decision
             if signal_val == 1 and confidence >= strategy.buy_threshold and ticker not in execution.active_positions:
-                if not execution.is_in_cooldown(ticker, today_str, cooldown_days=10):
+                if not execution.is_in_cooldown(ticker, today_str, cooldown_days=0):
                     allocation = risk.calculate_buy_allocation(
                         execution.initial_capital, execution.current_cash
                     )
                     if allocation > 0:
                         execution.buy_asset(ticker, today_str, current_price, allocation)
                 else:
-                    print(f"  Buy signal ignored: {ticker} is in 10-day cooldown block.")
+                    print(f"  Buy signal ignored: {ticker} is in cooldown block.")
 
         except Exception as e:
             print(f"Error predicting signal for {ticker}: {e}")
