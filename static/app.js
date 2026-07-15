@@ -60,7 +60,13 @@ document.addEventListener("DOMContentLoaded", () => {
     // Set intervals for automatic background polling
     fetchLogs();
     setInterval(fetchLogs, 5000); // Poll logs every 5 seconds
-    setInterval(fetchPortfolioData, 30000); // Poll portfolio stats every 30 seconds
+    setInterval(fetchPortfolioData, 5000); // Poll portfolio stats every 5 seconds
+    
+    // Auto-update the active ticker chart every 5 seconds
+    setInterval(() => {
+        const activeTicker = document.getElementById("ticker-select").value;
+        loadTickerChart(activeTicker);
+    }, 5000);
 });
 
 async function fetchPortfolioData() {
@@ -228,8 +234,6 @@ function renderTickerChart(ticker, data) {
         }
     }
 
-    if (tickerChart) tickerChart.destroy();
-
     // Calculate dynamic scaling for volume axis to keep it in the bottom 25% of chart
     const maxVolume = Math.max(...volumes, 1);
 
@@ -238,6 +242,25 @@ function renderTickerChart(ticker, data) {
     const showDMA50 = document.getElementById("toggle-dma50").checked;
     const showDMA200 = document.getElementById("toggle-dma200").checked;
     const showVolume = document.getElementById("toggle-volume").checked;
+
+    if (tickerChart) {
+        tickerChart.data.labels = labels;
+        tickerChart.data.datasets[0].data = closePrices;
+        tickerChart.data.datasets[1].data = dma50;
+        tickerChart.data.datasets[2].data = dma200;
+        tickerChart.data.datasets[3].data = buyPoints;
+        tickerChart.data.datasets[4].data = sellPoints;
+        tickerChart.data.datasets[5].data = volumes;
+        
+        tickerChart.data.datasets[0].hidden = !showPrice;
+        tickerChart.data.datasets[1].hidden = !showDMA50;
+        tickerChart.data.datasets[2].hidden = !showDMA200;
+        tickerChart.data.datasets[5].hidden = !showVolume;
+        
+        tickerChart.options.scales.y1.max = maxVolume * 4;
+        tickerChart.update('none');
+        return;
+    }
 
     tickerChart = new Chart(ctx, {
         type: "line",
