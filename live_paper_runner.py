@@ -19,7 +19,10 @@ LIVE_DATA_CACHE = {}
 def run_live_paper_trading(strategy=None):
     global LIVE_DATA_CACHE
     tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
-    portfolio_file = "data/live_paper_portfolio.json"
+    
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    portfolio_file = os.path.abspath(os.path.join(base_dir, "..", "data", "live_paper_portfolio.json"))
+    data_dir = os.path.abspath(os.path.join(base_dir, "..", "data"))
 
     print("==================================================")
     print("LIVE PAPER TRADING BOT RUNNER (2-SEC SCALPER)")
@@ -33,16 +36,15 @@ def run_live_paper_trading(strategy=None):
     # 2. Fallback/Safety model training
     if strategy is None:
         print("Initializing Strategy Agent (ML Brain) in fallback mode...")
-        strategy = StrategyAgent(tickers, data_dir="data")
+        strategy = StrategyAgent(tickers, data_dir=data_dir)
         strategy.train_model()
 
     # 3. Fetch latest quotes from the public REST API in one batch request
     current_prices = {}
     try:
-        # Request batch quotes from the free API
         url = "http://65.0.104.9/stock/list?symbols=RELIANCE,TCS,INFY,HDFCBANK&res=num"
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req) as response:
+        with urllib.request.urlopen(req, timeout=1.5) as response:
             res_data = json.loads(response.read().decode())
             if res_data.get("status") == "success":
                 for stock_info in res_data.get("stocks", []):
@@ -62,7 +64,7 @@ def run_live_paper_trading(strategy=None):
     current_minute = datetime.datetime.now().replace(second=0, microsecond=0)
 
     # Ingestion Agent for fundamental fetching
-    ingestion = IngestionAgent(output_dir="data")
+    ingestion = IngestionAgent(output_dir=data_dir)
     today_features = {}
 
     # 4. Update dataframes and compute technicals using the global cache
