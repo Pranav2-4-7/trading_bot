@@ -55,9 +55,18 @@ def run_live_paper_trading(strategy=None):
     except Exception as e:
         print(f"Error fetching batch quotes from public REST API: {e}")
 
-    # If API call failed completely, fallback to last known prices
+    # Fallback to yfinance if the REST API fails
     if not current_prices:
-        print("Warning: REST API call failed. Skipping this tick.")
+        print("Falling back to yfinance for live quotes...")
+        for ticker in tickers:
+            try:
+                t = yf.Ticker(ticker)
+                current_prices[ticker] = float(t.fast_info['lastPrice'])
+            except Exception as yf_err:
+                print(f"Failed to fetch live quote for {ticker} from yfinance: {yf_err}")
+
+    if not current_prices:
+        print("Warning: No quotes available. Skipping this tick.")
         return
 
     # Use current datetime stamp for trade logs
