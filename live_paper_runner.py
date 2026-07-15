@@ -42,10 +42,11 @@ def run_live_paper_trading(strategy=None):
     # 3. Fetch latest quotes from the public REST API in one batch request
     current_prices = {}
     try:
+        import requests
         url = "http://65.0.104.9/stock/list?symbols=RELIANCE,TCS,INFY,HDFCBANK&res=num"
-        req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=1.5) as response:
-            res_data = json.loads(response.read().decode())
+        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=1.5)
+        if response.status_code == 200:
+            res_data = response.json()
             if res_data.get("status") == "success":
                 for stock_info in res_data.get("stocks", []):
                     sym = stock_info["symbol"]
