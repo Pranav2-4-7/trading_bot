@@ -159,7 +159,7 @@ def run_live_paper_trading(strategy=None):
             tech_row["Debt_to_Equity"] = debt_to_equity
 
             # Format Date column back to string format for StrategyAgent
-            tech_row["Date"] = tech_row["Date"].dt.strftime('%Y-%m-%d %H:%M:%S')
+            tech_row["Date"] = pd.to_datetime(tech_row["Date"]).dt.strftime('%Y-%m-%d %H:%M:%S')
 
             today_features[ticker] = tech_row
             print(f"Current price for {ticker}: INR {live_price:.2f}")

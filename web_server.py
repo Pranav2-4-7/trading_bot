@@ -102,12 +102,14 @@ def get_ticker_data(ticker):
             df["Volume_Ratio"] = df["Volume"] / df["Volume"].rolling(window=20).mean().replace(0, 1.0)
 
         # Ensure Date is timezone-naive and format as string
-        if df["Date"].dt.tz is not None:
-            df["Date"] = df["Date"].dt.tz_localize(None)
+        date_series = pd.to_datetime(df["Date"])
+        if date_series.dt.tz is not None:
+            date_series = date_series.dt.tz_localize(None)
+        df["Date"] = date_series
             
         df = df.sort_values("Date").reset_index(drop=True)
         # Convert Date to string with time format %Y-%m-%d %H:%M:%S
-        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d %H:%M:%S")
+        df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d %H:%M:%S")
 
         # Merge fundamentals
         from data_scraper import IngestionAgent
