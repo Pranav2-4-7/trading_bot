@@ -66,7 +66,7 @@ class StrategyAgent:
             n_estimators=50,
             max_depth=5,
             learning_rate=0.03,
-            scale_pos_weight=1.0,
+            scale_pos_weight=scale_pos_weight,
             random_state=42,
             eval_metric="logloss"
         )
@@ -95,7 +95,7 @@ class StrategyAgent:
             n_estimators=50,
             max_depth=5,
             learning_rate=0.03,
-            scale_pos_weight=1.0,
+            scale_pos_weight=scale_pos_weight,
             random_state=42,
             eval_metric="logloss"
         )
