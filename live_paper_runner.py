@@ -200,8 +200,28 @@ def run_live_paper_trading(strategy=None):
             print(f"{ticker} | Signal: {signal_val} | Confidence: {confidence:.2%}")
 
             # BUY Decision
-            print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={strategy.buy_threshold:.4f} | active_positions={list(execution.active_positions.keys())}")
-            if signal_val == 1 and confidence >= strategy.buy_threshold and ticker not in execution.active_positions:
+            is_active = ticker in execution.active_positions
+            position = execution.active_positions.get(ticker) if is_active else None
+            buy_count = position.get("buy_count", 1) if position else 0
+
+            # Conditions to buy:
+            # Case 1: Ticker is not currently active
+            # Case 2: Ticker is active, but we have bought it only once (buy_count < 2), and current price is >= 1.0% lower than entry price
+            can_buy = False
+            is_averaging_down = False
+            if not is_active:
+                can_buy = True
+            elif buy_count < 2:
+                entry_price = position["entry_price"]
+                price_drop_pct = (entry_price - current_price) / entry_price
+                if price_drop_pct >= 0.010: # at least 1.0% drop
+                    can_buy = True
+                    is_averaging_down = True
+                    print(f"  [Average Down] {ticker} qualifies for averaging down! Price drop: {price_drop_pct:.2%}")
+
+            print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={strategy.buy_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
+            
+            if signal_val == 1 and confidence >= strategy.buy_threshold and can_buy:
                 is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=0)
                 print(f"  [DEBUG BUY] cooldown={is_cooldown}")
                 if not is_cooldown:

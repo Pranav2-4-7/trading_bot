@@ -64,14 +64,34 @@ class ExecutionAgent:
 
             if self.current_cash >= total_deduction:
                 self.current_cash -= total_deduction
-                self.active_positions[ticker] = {
-                    "entry_price": execution_price,
-                    "shares": shares_to_buy,
-                    "entry_date": date,
-                }
-                print(
-                    f"[{date}] BUY  | {ticker:=<11} | {shares_to_buy} Shares @ INR {execution_price:.2f} | Fees: INR {transaction_fees:.2f}"
-                )
+                
+                if ticker in self.active_positions:
+                    pos = self.active_positions[ticker]
+                    old_shares = pos["shares"]
+                    old_price = pos["entry_price"]
+                    total_shares = old_shares + shares_to_buy
+                    average_price = ((old_shares * old_price) + (shares_to_buy * execution_price)) / total_shares
+                    
+                    self.active_positions[ticker] = {
+                        "entry_price": average_price,
+                        "shares": total_shares,
+                        "entry_date": pos.get("entry_date", date),
+                        "last_buy_date": date,
+                        "buy_count": pos.get("buy_count", 1) + 1
+                    }
+                    print(
+                        f"[{date}] AVG-DOWN | {ticker:=<11} | Added {shares_to_buy} Shares @ INR {execution_price:.2f} | New Avg Price: INR {average_price:.2f}"
+                    )
+                else:
+                    self.active_positions[ticker] = {
+                        "entry_price": execution_price,
+                        "shares": shares_to_buy,
+                        "entry_date": date,
+                        "buy_count": 1
+                    }
+                    print(
+                        f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ INR {execution_price:.2f} | Fees: INR {transaction_fees:.2f}"
+                    )
                 return True
         return False
 
