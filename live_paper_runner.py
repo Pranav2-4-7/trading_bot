@@ -214,7 +214,7 @@ def run_live_paper_trading(strategy=None):
             elif buy_count < 2:
                 entry_price = position["entry_price"]
                 price_drop_pct = (entry_price - current_price) / entry_price
-                if price_drop_pct >= 0.010: # at least 1.0% drop
+                if price_drop_pct >= 0.003: # at least 0.3% drop
                     can_buy = True
                     is_averaging_down = True
                     print(f"  [Average Down] {ticker} qualifies for averaging down! Price drop: {price_drop_pct:.2%}")
