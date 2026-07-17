@@ -1,120 +1,92 @@
-# Binance Futures Testnet Trading Bot
+# TradingBOT - Premium Multi-Agent Terminal & Real-Time Scalper
 
-A structured, lightweight, and robust Python command-line application built to place and manage orders on the Binance Futures Testnet (USDT-M). This project uses raw HTTP requests to ensure high reliability, zero package deprecation issues, and complete control over the network layer.
+A professional, real-time intraday scalping bot and interactive web dashboard built to trade Indian Equities (RELIANCE, TCS, INFY, HDFCBANK). The project combines an advanced XGBoost machine learning brain, dynamic risk management, and a live financial news sentiment analysis filter.
+
+---
 
 ## Features
 
-- **Core Orders**: Supports `MARKET` and `LIMIT` orders for both `BUY` and `SELL` sides.
-- **Bonus Order Type**: Supports `STOP_MARKET` orders (Stop Loss triggers).
-- **Time Synchronization**: Automatically synchronizes system clock with Binance server time to prevent clock drift issues (`-1021: timestamp outside recvWindow` error).
-- **Dual CLI Interface**:
-  - **Direct CLI Mode**: Fully automated headless script execution using command-line arguments.
-  - **Enhanced Interactive Mode (Bonus)**: Beautiful interactive prompt workflow using `questionary` with dropdown selection lists, autocomplete, password hiding for secret keys, and pre-execution confirmations.
-- **Robust Validation**: Real-time validation of symbol formatting, sides, order types, quantities, limit prices, and stop prices before sending requests.
-- **Structured Logging**: Comprehensive but clean log outputs to both the console and a persistent `trading_bot.log` file with masked API credentials for security.
-- **Unit Tests**: Full unit test coverage for inputs validation.
+- **Live 2-Second Scalping Scheduler**: Periodically polls live market quotes and runs real-time predictions in under 1ms.
+- **Premium Web Dashboard**: A responsive Flask-based web interface at `http://127.0.0.1:5000` showing:
+  - Account equity curve and cash balances.
+  - Active positions table with dynamic PnL tracking.
+  - Closed transactions ledger showing exit reasons.
+  - Real-time terminal log outputs.
+- **XGBoost ML Brain (18 Features)**: Pre-trained on 1-minute historical candles from Yahoo Finance. Features include:
+  - *Core Trend:* 50/200 period Moving Averages, distance from MAs.
+  - *Momentum:* RSI14, MACD (Signal/Hist), Rate of Change (ROC_10).
+  - *Volatility:* Bollinger Bands (Width, Upper/Lower distances), ATR, ATR_Ratio.
+  - *Base:* Close, Volume, Volume Ratio.
+  - *Fundamentals:* Net Profit Margin, Debt-to-Equity.
+- **Live RSS News Sentiment Agent**: Scraping recent Yahoo Finance news headlines via built-in XML parsing. Overrides and blocks buy orders if stock sentiment is bearish (`< -0.2`).
+- **Dynamic Profit Locking (Trailing Stop-Loss)**: Tracks the highest peak price reached for all open positions and triggers automatic exit orders if the price drops `2.0%` from its peak.
+- **Smart Averaging Down**: Allows buying more shares to lower average cost if price drops by `0.3%` or more, capped at 2 entries max per position.
 
 ---
 
 ## Project Structure
 
-```
-trading_bot/
-  bot/
-    __init__.py
-    client.py           # Authenticated REST API Client wrapper with clock sync
-    orders.py           # Order parameters preparation and execution logic
-    validators.py       # User input sanitization and verification logic
-    logging_config.py   # Console and file logging configuration
-  tests/
-    test_validators.py  # Unit tests for the validation logic
-  cli.py                # Main CLI entry point (Direct & Interactive)
-  .env.example          # Template for API credentials
-  requirements.txt      # External dependencies
-  README.md             # This documentation
+```text
+TradingBOT/
+  static/
+    app.js              # Frontend dashboard client logic
+    style.css           # Terminal styles and layout
+  templates/
+    index.html          # Web dashboard markup
+  agent_coordinator.py  # Historical backtesting simulation coordinator
+  data_scraper.py      # Technical feature engineering and data ingestion
+  live_paper_runner.py  # 2-second scalper execution runner & sentiment agent
+  model.py              # XGBoost ML Brain classifier and training script
+  paper_broker.py       # Simulated broker with averaging down & trailing SL
+  web_server.py         # Flask dashboard API and scan scheduler
 ```
 
 ---
 
-## Setup & Installation
+## Setup & Running the Bot
 
-### 1. Prerequisites
-- Python 3.8 or higher.
-- A Binance Futures Testnet account. You can register/login at [Binance Futures Testnet](https://testnet.binancefuture.com) and generate an **API Key** and **Secret Key**.
-
-### 2. Install Dependencies
-Initialize a virtual environment and install the required libraries:
+### 1. Initialize Virtual Environment
+Ensure you have Python 3.10+ installed. Initialize the virtual environment and install dependencies:
 
 ```bash
-# Create a virtual environment
+# Create and activate environment
 python -m venv .venv
-
-# Activate the virtual environment
-# On Windows:
 .venv\Scripts\activate
-# On Linux/macOS:
-source .venv/bin/activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install required packages
+pip install requests yfinance pandas xgboost scikit-learn Flask beautifulsoup4
 ```
 
-### 3. Configure Credentials
-Duplicate the `.env.example` file to create a `.env` file in the project root:
+### 2. Start the Live Scalper & Dashboard
+Run the web server. This will pre-train the XGBoost brain on startup and kick off the 2-second background scheduler thread:
 
 ```bash
-cp .env.example .env
+python TradingBOT/web_server.py
 ```
 
-Open `.env` and fill in your Binance Futures Testnet credentials:
-```env
-BINANCE_API_KEY=your_actual_testnet_api_key_here
-BINANCE_SECRET_KEY=your_actual_testnet_secret_key_here
-```
+Open **`http://127.0.0.1:5000`** in your browser to view the active terminal, logs, and portfolio metrics.
 
 ---
 
-## How to Run Examples
+## Model Evaluation & Performance
 
-### 1. Interactive Mode (Enhanced UX)
-If you run the CLI without any arguments, it will launch the interactive menus. If credentials are not set in the `.env` file, it will prompt you to type them securely.
+You can evaluate the XGBoost Strategy Agent's standalone accuracy and classification metrics directly:
 
 ```bash
-python cli.py
+python TradingBOT/model.py
 ```
 
-### 2. Direct CLI Mode (Headless Automation)
-You can place orders instantly by supplying the parameters directly in your shell:
-
-#### Placement Examples:
-
-- **Place a MARKET BUY Order**:
-  ```bash
-  python cli.py --symbol BTCUSDT --side BUY --type MARKET --quantity 0.001
-  ```
-
-- **Place a LIMIT SELL Order**:
-  ```bash
-  python cli.py --symbol BTCUSDT --side SELL --type LIMIT --quantity 0.001 --price 95000.0
-  ```
-
-- **Place a STOP_MARKET BUY Order (Stop Loss)**:
-  ```bash
-  python cli.py --symbol BTCUSDT --side BUY --type STOP_MARKET --quantity 0.001 --stop-price 90000.0
-  ```
+**Latest Brain Accuracy Report:**
+* **Accuracy Score**: `59.82%`
+* **Buy Signal Precision**: `17%`
+* **Positive F1-Score**: `0.26`
 
 ---
 
-## Running Unit Tests
+## Simulation Backtests
 
-We use `pytest` for unit testing the input validator. To run the test suite:
+To run a historical paper trading simulation to verify your parameters (thresholds, stop losses, etc.):
 
 ```bash
-python -m pytest tests/
+python TradingBOT/agent_coordinator.py
 ```
-
----
-
-## Log Files
-
-All logs (containing outgoing request URLs, timestamp offsets, request params, response codes, and JSON bodies) are saved to `trading_bot.log` in the root folder. Sensitive keys are obfuscated automatically.
