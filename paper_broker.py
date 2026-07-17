@@ -77,7 +77,8 @@ class ExecutionAgent:
                         "shares": total_shares,
                         "entry_date": pos.get("entry_date", date),
                         "last_buy_date": date,
-                        "buy_count": pos.get("buy_count", 1) + 1
+                        "buy_count": pos.get("buy_count", 1) + 1,
+                        "peak_price": average_price
                     }
                     print(
                         f"[{date}] AVG-DOWN | {ticker:=<11} | Added {shares_to_buy} Shares @ INR {execution_price:.2f} | New Avg Price: INR {average_price:.2f}"
@@ -87,7 +88,8 @@ class ExecutionAgent:
                         "entry_price": execution_price,
                         "shares": shares_to_buy,
                         "entry_date": date,
-                        "buy_count": 1
+                        "buy_count": 1,
+                        "peak_price": execution_price
                     }
                     print(
                         f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ INR {execution_price:.2f} | Fees: INR {transaction_fees:.2f}"
@@ -150,19 +152,23 @@ class ExecutionAgent:
 
 class RiskAgent:
     """Agent responsible for risk controls: stop-loss, take-profit, and position sizing."""
-    def __init__(self, stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20):
+    def __init__(self, stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.02):
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
         self.max_allocation_pct = max_allocation_pct
+        self.trailing_stop_loss_pct = trailing_stop_loss_pct
 
-    def check_position_risk(self, ticker, current_price, entry_price):
-        """Checks if a position has breached stop-loss or take-profit boundaries."""
+    def check_position_risk(self, ticker, current_price, entry_price, peak_price):
+        """Checks if a position has breached trailing stop-loss or take-profit boundaries."""
+        # Check take-profit from initial entry price
         price_change_pct = (current_price - entry_price) / entry_price
-        
-        if price_change_pct <= -self.stop_loss_pct:
-            return True, "Stop-Loss Breached"
-        elif price_change_pct >= self.take_profit_pct:
+        if price_change_pct >= self.take_profit_pct:
             return True, "Take-Profit Breached"
+            
+        # Check trailing stop-loss from peak price
+        drawdown_from_peak = (peak_price - current_price) / peak_price
+        if drawdown_from_peak >= self.trailing_stop_loss_pct:
+            return True, "Trailing Stop-Loss Breached"
             
         return False, None
 
@@ -210,9 +216,15 @@ def run_paper_trading_simulation(initial_capital=100000.0, signals_file="data/ge
             if ticker in current_prices:
                 position = execution_agent.active_positions[ticker]
                 current_price = current_prices[ticker]
-                
+                # Initialize or update peak price
+                entry_price = position["entry_price"]
+                peak_price = position.get("peak_price", entry_price)
+                if current_price > peak_price:
+                    position["peak_price"] = current_price
+                    peak_price = current_price
+                    
                 should_sell, reason = risk_agent.check_position_risk(
-                    ticker, current_price, position["entry_price"]
+                    ticker, current_price, entry_price, peak_price=peak_price
                 )
                 if should_sell:
                     execution_agent.sell_asset(ticker, date, current_price, reason=reason)

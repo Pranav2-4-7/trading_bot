@@ -35,7 +35,7 @@ def run_agent_simulation():
     test_results_df = test_results_df.sort_values("Date").reset_index(drop=True)
 
     execution = ExecutionAgent(initial_capital)
-    risk = RiskAgent(stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20)
+    risk = RiskAgent(stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.02)
 
     print("\n==================================================")
     print("STARTING PAPER TRADING SIMULATION LOOP")
@@ -62,8 +62,15 @@ def run_agent_simulation():
                 position = execution.active_positions[ticker]
                 current_price = current_prices[ticker]
                 
+                # Initialize or update peak price
+                entry_price = position["entry_price"]
+                peak_price = position.get("peak_price", entry_price)
+                if current_price > peak_price:
+                    position["peak_price"] = current_price
+                    peak_price = current_price
+                    
                 should_sell, reason = risk.check_position_risk(
-                    ticker, current_price, position["entry_price"]
+                    ticker, current_price, entry_price, peak_price=peak_price
                 )
                 if should_sell:
                     execution.sell_asset(ticker, date, current_price, reason=reason)

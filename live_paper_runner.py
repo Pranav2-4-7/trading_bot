@@ -31,7 +31,7 @@ def run_live_paper_trading(strategy=None):
     # 1. Initialize execution and risk agents, load portfolio state
     execution = ExecutionAgent(initial_capital=100000.0)
     execution.load_state(portfolio_file)
-    risk = RiskAgent(stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20)
+    risk = RiskAgent(stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.02)
 
     # 2. Fallback/Safety model training
     if strategy is None:
@@ -178,8 +178,16 @@ def run_live_paper_trading(strategy=None):
             position = execution.active_positions[ticker]
             current_price = current_prices[ticker]
             
+            # Initialize or update peak price
+            entry_price = position["entry_price"]
+            peak_price = position.get("peak_price", entry_price)
+            if current_price > peak_price:
+                position["peak_price"] = current_price
+                peak_price = current_price
+                print(f"  [Risk Check] Updated peak price for {ticker}: INR {peak_price:.2f}")
+                
             should_sell, reason = risk.check_position_risk(
-                ticker, current_price, position["entry_price"]
+                ticker, current_price, entry_price, peak_price=peak_price
             )
             if should_sell:
                 execution.sell_asset(ticker, today_str, current_price, reason=reason)
