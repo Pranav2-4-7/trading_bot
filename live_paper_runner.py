@@ -5,6 +5,9 @@ import yfinance as yf
 import datetime
 import urllib.request
 import json
+import xml.etree.ElementTree as ET
+import re
+import numpy as np
 
 # Add current folder to path to allow importing adjacent modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -15,6 +18,52 @@ from paper_broker import ExecutionAgent, RiskAgent
 
 # Global cache to persist historical dataframes and avoid yfinance rate-limiting
 LIVE_DATA_CACHE = {}
+
+def fetch_sentiment_score(ticker):
+    """Fetches recent news for a ticker and calculates a simple keyword sentiment score."""
+    search_ticker = ticker.split(".")[0]
+    url = f"https://finance.yahoo.com/rss/headline?s={search_ticker}"
+    try:
+        req = urllib.request.Request(
+            url, 
+            headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
+        )
+        with urllib.request.urlopen(req, timeout=5) as response:
+            xml_data = response.read()
+        
+        root = ET.fromstring(xml_data)
+        items = root.findall(".//item")
+        
+        titles = []
+        for item in items:
+            title_el = item.find("title")
+            if title_el is not None and title_el.text:
+                titles.append(title_el.text)
+                
+        if not titles:
+            return 0.0
+            
+        pos_words = re.compile(r'\b(bullish|profit|growth|buy|upbeat|gain|success|positive|soar|climb|rise|rally|strong|outperform)\b', re.IGNORECASE)
+        neg_words = re.compile(r'\b(bearish|loss|crash|fall|debt|decline|negative|drop|plunge|sell|worry|warn|weak|underperform)\b', re.IGNORECASE)
+        
+        total_score = 0.0
+        match_count = 0
+        for title in titles:
+            pos_matches = len(pos_words.findall(title))
+            neg_matches = len(neg_words.findall(title))
+            if pos_matches + neg_matches > 0:
+                total_score += (pos_matches - neg_matches) / (pos_matches + neg_matches)
+                match_count += 1
+                
+        if match_count == 0:
+            return 0.0
+            
+        avg_score = total_score / match_count
+        return float(np.clip(avg_score, -1.0, 1.0))
+        
+    except Exception as e:
+        print(f"  [Sentiment Error] Failed to fetch sentiment for {ticker}: {e}")
+        return 0.0
 
 def run_live_paper_trading(strategy=None):
     global LIVE_DATA_CACHE
@@ -146,6 +195,37 @@ def run_live_paper_trading(strategy=None):
 
             df["Volume_Ratio"] = df["Volume"] / df["Volume"].rolling(window=20).mean().replace(0, 1.0)
 
+            # 4. MACD
+            ema12 = df["Close"].ewm(span=12, adjust=False).mean()
+            ema26 = df["Close"].ewm(span=26, adjust=False).mean()
+            df["MACD"] = ema12 - ema26
+            df["MACD_Signal"] = df["MACD"].ewm(span=9, adjust=False).mean()
+            df["MACD_Hist"] = df["MACD"] - df["MACD_Signal"]
+
+            # 5. Bollinger Bands
+            sma20 = df["Close"].rolling(window=20).mean()
+            std20 = df["Close"].rolling(window=20).std()
+            upper_bb = sma20 + 2 * std20
+            lower_bb = sma20 - 2 * std20
+            df["BB_Upper_Dist"] = (df["Close"] - upper_bb) / upper_bb.replace(0, 0.001)
+            df["BB_Lower_Dist"] = (df["Close"] - lower_bb) / lower_bb.replace(0, 0.001)
+            df["BB_Width"] = (upper_bb - lower_bb) / sma20.replace(0, 0.001)
+
+            # 6. ATR
+            tr1 = df["High"] - df["Low"]
+            tr2 = (df["High"] - df["Close"].shift(1)).abs()
+            tr3 = (df["Low"] - df["Close"].shift(1)).abs()
+            tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+            df["ATR"] = tr.rolling(window=14).mean()
+            df["ATR_Ratio"] = df["ATR"] / df["Close"].replace(0, 0.001)
+
+            # 7. Distance from MAs
+            df["Dist_MA50"] = (df["Close"] - df["MA50"]) / df["MA50"].replace(0, 0.001)
+            df["Dist_MA200"] = (df["Close"] - df["MA200"]) / df["MA200"].replace(0, 0.001)
+
+            # 8. Momentum (Rate of Change)
+            df["ROC_10"] = (df["Close"] - df["Close"].shift(10)) / df["Close"].shift(10).replace(0, 0.001)
+
             # Today's technical row (last row of calculated features)
             tech_row = df.iloc[-1:].copy()
 
@@ -230,17 +310,23 @@ def run_live_paper_trading(strategy=None):
             print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={strategy.buy_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
             
             if signal_val == 1 and confidence >= strategy.buy_threshold and can_buy:
-                is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=0)
-                print(f"  [DEBUG BUY] cooldown={is_cooldown}")
-                if not is_cooldown:
-                    allocation = risk.calculate_buy_allocation(
-                        execution.initial_capital, execution.current_cash
-                    )
-                    print(f"  [DEBUG BUY] allocation={allocation} | current_cash={execution.current_cash}")
-                    if allocation > 0:
-                        execution.buy_asset(ticker, today_str, current_price, allocation)
+                # Run Live Sentiment override check
+                sentiment_score = fetch_sentiment_score(ticker)
+                print(f"  [Sentiment Agent] Ticker: {ticker} | Sentiment: {sentiment_score:+.2f}")
+                if sentiment_score < -0.2:
+                    print(f"  [Sentiment Block] Blocked BUY signal for {ticker} due to bearish news sentiment ({sentiment_score:+.2f})")
                 else:
-                    print(f"  Buy signal ignored: {ticker} is in cooldown block.")
+                    is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=0)
+                    print(f"  [DEBUG BUY] cooldown={is_cooldown}")
+                    if not is_cooldown:
+                        allocation = risk.calculate_buy_allocation(
+                            execution.initial_capital, execution.current_cash
+                        )
+                        print(f"  [DEBUG BUY] allocation={allocation} | current_cash={execution.current_cash}")
+                        if allocation > 0:
+                            execution.buy_asset(ticker, today_str, current_price, allocation)
+                    else:
+                        print(f"  Buy signal ignored: {ticker} is in cooldown block.")
 
         except Exception as e:
             print(f"Error predicting signal for {ticker}: {e}")

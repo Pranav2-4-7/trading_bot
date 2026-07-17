@@ -10,7 +10,13 @@ class StrategyAgent:
         self.tickers = tickers
         self.data_dir = data_dir
         self.model = None
-        self.feature_cols = ["Close", "Volume", "MA50", "MA200", "RSI14", "Volume_Ratio", "Net_Profit_Margin", "Debt_to_Equity"]
+        self.feature_cols = [
+            "Close", "Volume", "MA50", "MA200", "RSI14", "Volume_Ratio",
+            "MACD", "MACD_Signal", "MACD_Hist", 
+            "BB_Upper_Dist", "BB_Lower_Dist", "BB_Width",
+            "ATR", "ATR_Ratio", "Dist_MA50", "Dist_MA200", "ROC_10",
+            "Net_Profit_Margin", "Debt_to_Equity"
+        ]
         # Set default threshold, will be optimized during training
         self.buy_threshold = 0.65
 
