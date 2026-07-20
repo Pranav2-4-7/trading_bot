@@ -35,7 +35,7 @@ def run_agent_simulation():
     test_results_df = test_results_df.sort_values("Date").reset_index(drop=True)
 
     execution = ExecutionAgent(initial_capital)
-    risk = RiskAgent(stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.02)
+    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.05)
 
     print("\n==================================================")
     print("STARTING PAPER TRADING SIMULATION LOOP")

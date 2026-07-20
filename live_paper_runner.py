@@ -80,7 +80,7 @@ def run_live_paper_trading(strategy=None):
     # 1. Initialize execution and risk agents, load portfolio state
     execution = ExecutionAgent(initial_capital=100000.0)
     execution.load_state(portfolio_file)
-    risk = RiskAgent(stop_loss_pct=0.02, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.02)
+    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.05)
 
     # 2. Fallback/Safety model training
     if strategy is None:
