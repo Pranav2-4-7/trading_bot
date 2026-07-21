@@ -94,7 +94,7 @@ class StrategyAgent:
                 best_threshold = th
                 
         print(f"Optimized Decision Threshold (based on validation set): {best_threshold:.4f} (Validation F1: {best_f1:.2%})")
-        self.buy_threshold = 0.55  # Overridden to conservative 0.55 for risk-hardening
+        self.buy_threshold = max(0.40, best_threshold)  # Use optimized threshold with a floor of 0.40
 
         # Train final model on full training set using optimized parameters
         self.model = XGBClassifier(

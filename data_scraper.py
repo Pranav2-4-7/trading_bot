@@ -10,13 +10,12 @@ class IngestionAgent:
         if not os.path.exists(self.output_dir):
             os.makedirs(self.output_dir)
 
-    def download_historical_data(self, tickers, start_date, end_date):
-        """Downloads 1-minute historical data for the last 7 days and saves to raw CSV files."""
+    def download_historical_data(self, tickers, start_date="2021-01-01", end_date="2026-06-25"):
+        """Downloads historical price data from Yahoo Finance across 5 years."""
         for ticker in tickers:
-            print(f"Downloading 1-minute data for {ticker}...")
+            print(f"Downloading 5-year daily data for {ticker}...")
             try:
-                # 1m data is only available for the last 7 days on yfinance
-                df = yf.download(ticker, period="7d", interval="1m")
+                df = yf.download(ticker, start=start_date, end=end_date, interval="1d")
 
                 if df.empty:
                     print(f"No data found for {ticker}")
@@ -97,9 +96,9 @@ class IngestionAgent:
         # 8. Momentum (Rate of Change)
         df["ROC_10"] = (df["Close"] - df["Close"].shift(10)) / df["Close"].shift(10).replace(0, 0.001)
 
-        # 9. Target Variable: 1 if price goes up > 0.20% in the next 15 minutes (15 bars), else 0
-        future_return = (df["Close"].shift(-15) - df["Close"]) / df["Close"]
-        df["Target"] = (future_return >= 0.0020).astype(int)
+        # 9. Target Variable: 1 if price goes up >= 0.30% in the next 2 trading days, else 0
+        future_return = (df["Close"].shift(-2) - df["Close"]) / df["Close"]
+        df["Target"] = (future_return >= 0.0030).astype(int)
 
         # Drop rows where indicators or target couldn't be calculated (edges of data)
         df = df.dropna(subset=["MA200", "RSI14", "ATR", "ROC_10"])
