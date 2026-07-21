@@ -1,6 +1,7 @@
 import sys
 import os
 import pandas as pd
+import yfinance as yf
 
 # Add current folder to path to allow importing adjacent modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -36,7 +37,20 @@ def run_agent_simulation():
 
     execution = ExecutionAgent(initial_capital)
     risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.05)
-
+    # Pre-fetch Daily SMA50 series for the backtest
+    print("\nPre-fetching Daily 50 SMA series for simulation...")
+    DAILY_SMAS = {}
+    for ticker in tickers:
+        try:
+            daily_df = yf.download(ticker, period="6mo", interval="1d", progress=False)
+            if isinstance(daily_df.columns, pd.MultiIndex):
+                daily_df.columns = daily_df.columns.get_level_values(0)
+            daily_df["SMA50"] = daily_df["Close"].rolling(window=50).mean()
+            # Index by date object for easy lookup
+            daily_df.index = pd.to_datetime(daily_df.index).date
+            DAILY_SMAS[ticker] = daily_df["SMA50"].to_dict()
+        except Exception as e:
+            print(f"Warning: Could not fetch daily SMAs for {ticker}: {e}")
     print("\n==================================================")
     print("STARTING PAPER TRADING SIMULATION LOOP")
     print("==================================================")
@@ -87,6 +101,19 @@ def run_agent_simulation():
 
             # Proposed BUY Signal Check
             if signal == 1 and confidence >= strategy.buy_threshold and ticker not in execution.active_positions:
+                # Check Daily 50 SMA trend filter
+                dt_obj = pd.to_datetime(date).date()
+                ticker_smas = DAILY_SMAS.get(ticker, {})
+                sma50 = None
+                if dt_obj in ticker_smas:
+                    sma50 = ticker_smas[dt_obj]
+                else:
+                    sorted_dates = sorted([d for d in ticker_smas.keys() if d <= dt_obj])
+                    if sorted_dates:
+                        sma50 = ticker_smas[sorted_dates[-1]]
+                        
+                if sma50 and current_price < sma50:
+                    continue  # Block buy since it's below the Daily 50 SMA
                 if not execution.is_in_cooldown(ticker, date, cooldown_days=10):
                     allocation = risk.calculate_buy_allocation(initial_capital, execution.current_cash)
                     if allocation > 0:

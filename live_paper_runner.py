@@ -65,6 +65,29 @@ def fetch_sentiment_score(ticker):
         print(f"  [Sentiment Error] Failed to fetch sentiment for {ticker}: {e}")
         return 0.0
 
+DAILY_SMA50_CACHE = {}
+
+def get_daily_sma50(ticker):
+    """Fetches Daily 50 SMA for the ticker and caches it."""
+    global DAILY_SMA50_CACHE
+    if ticker in DAILY_SMA50_CACHE:
+        return DAILY_SMA50_CACHE[ticker]
+    
+    try:
+        print(f"Fetching daily 50 SMA for {ticker}...")
+        daily_df = yf.download(ticker, period="3mo", interval="1d", progress=False)
+        if isinstance(daily_df.columns, pd.MultiIndex):
+            daily_df.columns = daily_df.columns.get_level_values(0)
+            
+        daily_df["SMA50"] = daily_df["Close"].rolling(window=50).mean()
+        sma50 = float(daily_df["SMA50"].iloc[-1])
+        DAILY_SMA50_CACHE[ticker] = sma50
+        print(f"  [Daily Filter] {ticker} SMA50: INR {sma50:.2f}")
+        return sma50
+    except Exception as e:
+        print(f"Error fetching daily SMA for {ticker}: {e}")
+        return None
+
 def run_live_paper_trading(strategy=None):
     global LIVE_DATA_CACHE
     tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
@@ -306,6 +329,13 @@ def run_live_paper_trading(strategy=None):
                     can_buy = True
                     is_averaging_down = True
                     print(f"  [Average Down] {ticker} qualifies for averaging down! Price drop: {price_drop_pct:.2%}")
+
+            # Check Daily 50 SMA trend filter
+            if can_buy:
+                sma50 = get_daily_sma50(ticker)
+                if sma50 and current_price < sma50:
+                    print(f"  [Trend Filter] Blocked BUY/AVG-DOWN for {ticker}: Price (INR {current_price:.2f}) is below Daily 50 SMA (INR {sma50:.2f})")
+                    can_buy = False
 
             print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={strategy.buy_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
             
