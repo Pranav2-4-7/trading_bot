@@ -22,6 +22,7 @@ app = Flask(
     static_url_path="/static"
 )
 app.debug = True
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 PORTFOLIO_FILE = os.path.join(BASE_DIR, "..", "data", "live_paper_portfolio.json")
 DATA_DIR = os.path.join(BASE_DIR, "..", "data")
