@@ -52,6 +52,11 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     });
 
+    document.getElementById("profile-select").addEventListener("change", () => {
+        fetchPortfolioData();
+    });
+    document.getElementById("reset-portfolio-btn").addEventListener("click", handleResetPortfolio);
+
     document.getElementById("run-bot-btn").addEventListener("click", triggerAgentScan);
     document.getElementById("clear-logs").addEventListener("click", () => {
         document.getElementById("log-output").innerHTML = "[System] Log history cleared.";
@@ -69,9 +74,38 @@ document.addEventListener("DOMContentLoaded", () => {
     }, 5000);
 });
 
+async function handleResetPortfolio() {
+    const profileSelect = document.getElementById("profile-select");
+    const activeProfile = profileSelect ? profileSelect.value : "macro";
+    const profileName = profileSelect ? profileSelect.options[profileSelect.selectedIndex].text : "Active Profile";
+    
+    if (!confirm(`Are you sure you want to reset capital back to INR 100,000 for '${profileName}'? This will clear all active holdings and trade history for this profile.`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch("/api/reset_portfolio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ profile: activeProfile })
+        });
+        const res = await response.json();
+        if (res.status === "success") {
+            alert(res.message);
+            await fetchPortfolioData();
+        } else {
+            alert("Failed to reset portfolio: " + (res.message || "Unknown error"));
+        }
+    } catch (err) {
+        alert("Error resetting portfolio: " + err.message);
+    }
+}
+
 async function fetchPortfolioData() {
     try {
-        const response = await fetch("/api/portfolio");
+        const profileSelect = document.getElementById("profile-select");
+        const activeProfile = profileSelect ? profileSelect.value : "macro";
+        const response = await fetch(`/api/portfolio?profile=${activeProfile}`);
         if (!response.ok) throw new Error("Portfolio API response error");
         portfolio = await response.json();
         

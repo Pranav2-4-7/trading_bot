@@ -56,16 +56,60 @@ def index():
 @app.route("/api/portfolio")
 def get_portfolio():
     import json
-    abs_path = os.path.abspath(PORTFOLIO_FILE)
-    print(f"[API Portfolio] Resolving PORTFOLIO_FILE: {abs_path} | exists: {os.path.exists(PORTFOLIO_FILE)}")
-    if not os.path.exists(PORTFOLIO_FILE):
-        return jsonify({"error": "Portfolio file not found. Run the bot first."}), 404
-        
-    with open(PORTFOLIO_FILE, "r") as f:
-        raw_content = f.read()
-        print(f"[API Portfolio] Raw Content Read:\n{raw_content}")
-        data = json.loads(raw_content)
+    from flask import request
+    profile_id = request.args.get("profile", "macro").lower()
+    
+    target_filename = f"live_paper_portfolio_{profile_id}.json"
+    target_file = os.path.join(DATA_DIR, target_filename)
+    if not os.path.exists(target_file):
+        if profile_id == "legacy" and os.path.exists(PORTFOLIO_FILE):
+            target_file = PORTFOLIO_FILE
+        else:
+            default_data = {
+                "initial_capital": 100000.0,
+                "current_cash": 100000.0,
+                "active_positions": {},
+                "cooldowns": {},
+                "trade_log": []
+            }
+            with open(target_file, "w") as f:
+                json.dump(default_data, f, indent=4)
+                
+    with open(target_file, "r") as f:
+        data = json.load(f)
     return jsonify(data)
+
+@app.route("/api/profiles")
+def get_profiles():
+    profiles = [
+        {"id": "macro", "name": "🚀 5-Year Macro Trend (Fresh 100k)", "description": "10% Risk Sizing, 2-Day Cooldown, Daily 50 SMA Filter, 5-Yr Model"},
+        {"id": "legacy", "name": "📜 Legacy Account (Original Holdings)", "description": "Preserves original 50 HDFCBANK shares and historical trade log"}
+    ]
+    return jsonify(profiles)
+
+@app.route("/api/reset_portfolio", methods=["POST"])
+def reset_portfolio():
+    import json
+    from flask import request
+    req_data = request.get_json() or {}
+    profile_id = req_data.get("profile", "macro").lower()
+    
+    target_filename = f"live_paper_portfolio_{profile_id}.json"
+    target_file = os.path.join(DATA_DIR, target_filename)
+    
+    fresh_state = {
+        "initial_capital": 100000.0,
+        "current_cash": 100000.0,
+        "active_positions": {},
+        "cooldowns": {},
+        "trade_log": []
+    }
+    
+    with open(target_file, "w") as f:
+        json.dump(fresh_state, f, indent=4)
+        
+    print(f"[Reset Portfolio] Portfolio for profile '{profile_id}' reset to fresh INR 100,000 balance.")
+    return jsonify({"status": "success", "message": f"Profile '{profile_id}' reset to fresh INR 100,000 capital."})
 
 @app.route("/api/ticker/<ticker>")
 def get_ticker_data(ticker):
@@ -198,8 +242,9 @@ def background_scheduler():
     while True:
         try:
             print(f"\n[Scheduler] Triggering automatic market scan at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
-            run_live_paper_trading(strategy=global_strategy)
-            print("[Scheduler] Automatic market scan completed successfully.")
+            run_live_paper_trading(strategy=global_strategy, profile_id="macro")
+            run_live_paper_trading(strategy=global_strategy, profile_id="legacy")
+            print("[Scheduler] Automatic market scan completed successfully for all active profiles.")
         except Exception as e:
             print(f"[Scheduler Error] Auto scan failed: {e}")
         # Sleep for 2 seconds

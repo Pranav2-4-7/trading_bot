@@ -25,7 +25,16 @@
                     <p>QUANTITATIVE MULTI-AGENT TERMINAL</p>
                 </div>
             </div>
-            <div class="controls">
+            <div class="controls" style="display: flex; align-items: center; gap: 12px;">
+                <div class="profile-selector-container">
+                    <select id="profile-select" style="background: rgba(18, 25, 41, 0.8); color: #e2e8f0; border: 1px solid rgba(255,255,255,0.15); padding: 8px 12px; border-radius: 8px; font-family: 'Outfit', sans-serif; font-size: 0.85rem; font-weight: 500; cursor: pointer; outline: none;">
+                        <option value="macro">🚀 5-Year Macro Trend (Fresh 100k)</option>
+                        <option value="legacy">📜 Legacy Account (Original Holdings)</option>
+                    </select>
+                </div>
+                <button id="reset-portfolio-btn" class="btn" style="background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3); padding: 8px 14px; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.85rem; transition: all 0.2s;">
+                    <i class="fa-solid fa-rotate-left"></i> RESET CAPITAL
+                </button>
                 <button id="run-bot-btn" class="btn btn-primary btn-glow">
                     <i class="fa-solid fa-radar-range icon-scan"></i>
                     <span>SCAN MARKET NOW</span>

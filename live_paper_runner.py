@@ -88,7 +88,7 @@ def get_daily_sma50(ticker):
         print(f"Error fetching daily SMA for {ticker}: {e}")
         return None
 
-def run_live_paper_trading(strategy=None):
+def run_live_paper_trading(strategy=None, profile_id="macro"):
     global LIVE_DATA_CACHE
     tickers = [
         "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
@@ -97,11 +97,15 @@ def run_live_paper_trading(strategy=None):
     ]
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    portfolio_file = os.path.abspath(os.path.join(base_dir, "..", "data", "live_paper_portfolio.json"))
+    portfolio_filename = f"live_paper_portfolio_{profile_id}.json"
+    portfolio_file = os.path.abspath(os.path.join(base_dir, "..", "data", portfolio_filename))
+    if not os.path.exists(portfolio_file) and profile_id == "legacy":
+        portfolio_file = os.path.abspath(os.path.join(base_dir, "..", "data", "live_paper_portfolio.json"))
+        
     data_dir = os.path.abspath(os.path.join(base_dir, "..", "data"))
 
     print("==================================================")
-    print("LIVE PAPER TRADING BOT RUNNER (2-SEC SCALPER)")
+    print(f"LIVE PAPER TRADING BOT RUNNER (PROFILE: {profile_id.upper()})")
     print("==================================================")
 
     # 1. Initialize execution and risk agents, load portfolio state
