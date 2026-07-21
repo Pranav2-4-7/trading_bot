@@ -196,7 +196,11 @@ class IngestionAgent:
 
 
 if __name__ == "__main__":
-    target_tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+    target_tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+        "BHARTIARTL.NS", "WIPRO.NS"
+    ]
     start = "2021-01-01"
     end = "2026-06-25"
 

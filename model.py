@@ -94,7 +94,7 @@ class StrategyAgent:
                 best_threshold = th
                 
         print(f"Optimized Decision Threshold (based on validation set): {best_threshold:.4f} (Validation F1: {best_f1:.2%})")
-        self.buy_threshold = 0.35  # Overridden to aggressive 0.35 for active intraday scalping
+        self.buy_threshold = 0.55  # Overridden to conservative 0.55 for risk-hardening
 
         # Train final model on full training set using optimized parameters
         self.model = XGBClassifier(
@@ -146,7 +146,11 @@ class StrategyAgent:
 
 
 if __name__ == "__main__":
-    target_tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+    target_tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+        "BHARTIARTL.NS", "WIPRO.NS"
+    ]
     
     try:
         agent = StrategyAgent(target_tickers)

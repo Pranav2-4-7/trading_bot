@@ -12,7 +12,11 @@ from paper_broker import ExecutionAgent, RiskAgent
 
 def run_agent_simulation():
     """Coordinates the entire multi-agent trading bot pipeline and paper trading simulation."""
-    tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+    tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+        "BHARTIARTL.NS", "WIPRO.NS"
+    ]
     start_date = "2021-01-01"
     end_date = "2026-06-25"
     initial_capital = 100000.0
@@ -36,7 +40,7 @@ def run_agent_simulation():
     test_results_df = test_results_df.sort_values("Date").reset_index(drop=True)
 
     execution = ExecutionAgent(initial_capital)
-    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.05)
+    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.10, trailing_stop_loss_pct=0.05)
     # Pre-fetch Daily SMA50 series for the backtest
     print("\nPre-fetching Daily 50 SMA series for simulation...")
     DAILY_SMAS = {}
@@ -114,7 +118,7 @@ def run_agent_simulation():
                         
                 if sma50 and current_price < sma50:
                     continue  # Block buy since it's below the Daily 50 SMA
-                if not execution.is_in_cooldown(ticker, date, cooldown_days=10):
+                if not execution.is_in_cooldown(ticker, date, cooldown_days=2):
                     allocation = risk.calculate_buy_allocation(initial_capital, execution.current_cash)
                     if allocation > 0:
                         execution.buy_asset(ticker, date, current_price, allocation)

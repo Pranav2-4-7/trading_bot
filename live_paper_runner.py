@@ -90,7 +90,11 @@ def get_daily_sma50(ticker):
 
 def run_live_paper_trading(strategy=None):
     global LIVE_DATA_CACHE
-    tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+    tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+        "BHARTIARTL.NS", "WIPRO.NS"
+    ]
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     portfolio_file = os.path.abspath(os.path.join(base_dir, "..", "data", "live_paper_portfolio.json"))
@@ -103,7 +107,7 @@ def run_live_paper_trading(strategy=None):
     # 1. Initialize execution and risk agents, load portfolio state
     execution = ExecutionAgent(initial_capital=100000.0)
     execution.load_state(portfolio_file)
-    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.20, trailing_stop_loss_pct=0.05)
+    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.10, trailing_stop_loss_pct=0.05)
 
     # 2. Fallback/Safety model training
     if strategy is None:
@@ -346,7 +350,7 @@ def run_live_paper_trading(strategy=None):
                 if sentiment_score < -0.2:
                     print(f"  [Sentiment Block] Blocked BUY signal for {ticker} due to bearish news sentiment ({sentiment_score:+.2f})")
                 else:
-                    is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=0)
+                    is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=2)
                     print(f"  [DEBUG BUY] cooldown={is_cooldown}")
                     if not is_cooldown:
                         allocation = risk.calculate_buy_allocation(

@@ -182,7 +182,11 @@ def background_scheduler():
     """Background daemon thread to execute live paper trading scan cycles every 2 seconds."""
     global global_strategy
     print("Pre-training Strategy Agent (ML Brain) on startup...")
-    tickers = ["RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS"]
+    tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+        "BHARTIARTL.NS", "WIPRO.NS"
+    ]
     from model import StrategyAgent
     global_strategy = StrategyAgent(tickers, data_dir=DATA_DIR)
     global_strategy.train_model()
