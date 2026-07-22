@@ -94,7 +94,7 @@ class StrategyAgent:
                 best_threshold = th
                 
         print(f"Optimized Decision Threshold (based on validation set): {best_threshold:.4f} (Validation F1: {best_f1:.2%})")
-        self.buy_threshold = 0.50  # Fixed at 0.50 threshold for active trading
+        self.buy_threshold = 0.57  # Optimal threshold balance (0.57) for active yet high-conviction trades
 
         # Train final model on full training set using optimized parameters
         self.model = XGBClassifier(

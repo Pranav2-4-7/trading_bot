@@ -338,12 +338,19 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                     is_averaging_down = True
                     print(f"  [Average Down] {ticker} qualifies for averaging down! Price drop: {price_drop_pct:.2%}")
 
-            # Check Daily 50 SMA trend filter
+            # Check Daily 50 SMA trend filter and Intraday Micro-Dip filter
             if can_buy:
                 sma50 = get_daily_sma50(ticker)
                 if sma50 and current_price < sma50:
                     print(f"  [Trend Filter] Blocked BUY/AVG-DOWN for {ticker}: Price (INR {current_price:.2f}) is below Daily 50 SMA (INR {sma50:.2f})")
                     can_buy = False
+
+                # Intraday Micro-Dip check: Avoid buying at the peak of a 1-minute overbought spike (RSI > 65)
+                if can_buy and "RSI14" in df.columns:
+                    intraday_rsi = df["RSI14"].iloc[-1] if not pd.isna(df["RSI14"].iloc[-1]) else 50.0
+                    if intraday_rsi > 65.0:
+                        print(f"  [Micro-Dip Filter] Blocked BUY for {ticker}: 1-min RSI ({intraday_rsi:.1f}) is overbought (> 65.0)")
+                        can_buy = False
 
             print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={strategy.buy_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
             
