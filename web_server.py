@@ -86,12 +86,15 @@ def get_portfolio():
             if df is not None and not df.empty and "Close" in df.columns:
                 latest_prices[t] = float(df["Close"].iloc[-1])
         
-        # Check active positions to guarantee EVERY active position has a live price
         active_pos_tickers = list(data.get("active_positions", {}).keys())
         missing_tickers = [t for t in active_pos_tickers if t not in latest_prices]
         if missing_tickers:
             fetched = fetch_batch_live_prices(missing_tickers)
             latest_prices.update(fetched)
+
+        # If cache was empty or missing any ticker, run a full batch fetch
+        if not latest_prices and active_pos_tickers:
+            latest_prices = fetch_batch_live_prices(active_pos_tickers)
             
         data["current_prices"] = latest_prices
     except Exception as e:
