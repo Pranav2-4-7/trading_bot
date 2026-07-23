@@ -109,6 +109,10 @@ async function fetchPortfolioData() {
         if (!response.ok) throw new Error("Portfolio API response error");
         portfolio = await response.json();
         
+        if (portfolio.current_prices) {
+            Object.assign(currentPrices, portfolio.current_prices);
+        }
+
         updateKPIs();
         updateTables();
         renderEquityChart();

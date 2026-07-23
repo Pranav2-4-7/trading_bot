@@ -77,6 +77,18 @@ def get_portfolio():
                 
     with open(target_file, "r") as f:
         data = json.load(f)
+
+    # Attach latest close prices from live cache for instant UI PnL calculation
+    try:
+        from live_paper_runner import LIVE_DATA_CACHE
+        latest_prices = {}
+        for t, df in LIVE_DATA_CACHE.items():
+            if df is not None and not df.empty and "Close" in df.columns:
+                latest_prices[t] = float(df["Close"].iloc[-1])
+        data["current_prices"] = latest_prices
+    except Exception as e:
+        print(f"[API Portfolio Error] Failed to attach current_prices: {e}")
+
     return jsonify(data)
 
 @app.route("/api/profiles")
