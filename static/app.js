@@ -65,13 +65,13 @@ document.addEventListener("DOMContentLoaded", () => {
     // Set intervals for automatic background polling
     fetchLogs();
     setInterval(fetchLogs, 5000); // Poll logs every 5 seconds
-    setInterval(fetchPortfolioData, 5000); // Poll portfolio stats every 5 seconds
+    setInterval(fetchPortfolioData, 3000); // Poll portfolio stats every 3 seconds for instant feedback
     
-    // Auto-update the active ticker chart every 5 seconds
+    // Auto-update the active ticker chart every 10 seconds to avoid unnecessary UI thrashing
     setInterval(() => {
         const activeTicker = document.getElementById("ticker-select").value;
         loadTickerChart(activeTicker);
-    }, 5000);
+    }, 10000);
 });
 
 async function handleResetPortfolio() {

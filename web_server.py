@@ -112,6 +112,9 @@ def reset_portfolio():
     print(f"[Reset Portfolio] Portfolio for profile '{profile_id}' reset to fresh INR 100,000 balance.")
     return jsonify({"status": "success", "message": f"Profile '{profile_id}' reset to fresh INR 100,000 capital."})
 
+# Global cache for fundamental data
+FUNDAMENTALS_CACHE = {}
+
 @app.route("/api/ticker/<ticker>")
 def get_ticker_data(ticker):
     try:
@@ -160,10 +163,15 @@ def get_ticker_data(ticker):
         # Convert Date to string with time format %Y-%m-%d %H:%M:%S
         df["Date"] = pd.to_datetime(df["Date"]).dt.strftime("%Y-%m-%d %H:%M:%S")
 
-        # Merge fundamentals
-        from data_scraper import IngestionAgent
-        ingestion = IngestionAgent(output_dir=DATA_DIR)
-        fund_df = ingestion.fetch_historical_fundamentals(ticker)
+        # Merge fundamentals using in-memory cache
+        global FUNDAMENTALS_CACHE
+        if ticker not in FUNDAMENTALS_CACHE:
+            from data_scraper import IngestionAgent
+            ingestion = IngestionAgent(output_dir=DATA_DIR)
+            fund_df = ingestion.fetch_historical_fundamentals(ticker)
+            FUNDAMENTALS_CACHE[ticker] = fund_df if not fund_df.empty else pd.DataFrame()
+
+        fund_df = FUNDAMENTALS_CACHE.get(ticker, pd.DataFrame())
         if not fund_df.empty:
             fund_df = fund_df.sort_values("Date").reset_index(drop=True)
             df["Net_Profit_Margin"] = 0.0
@@ -243,7 +251,7 @@ def background_scheduler():
     ultra_strategy = UltraStrategyAgent(tickers, data_dir=DATA_DIR)
     ultra_strategy.train_model()
 
-    print("[Scheduler] Background agent scheduler thread active. Scanning every 2 seconds.")
+    print("[Scheduler] Background agent scheduler thread active. Scanning every 10 seconds.")
     # Run once at startup (sleep a few seconds first to let flask bind)
     time.sleep(5)
     while True:
@@ -255,8 +263,8 @@ def background_scheduler():
             print("[Scheduler] Automatic market scan completed successfully for all active profiles.")
         except Exception as e:
             print(f"[Scheduler Error] Auto scan failed: {e}")
-        # Sleep for 2 seconds
-        time.sleep(2)
+        # Sleep for 10 seconds to allow smooth, responsive UI interactions
+        time.sleep(10)
 
 if __name__ == "__main__":
     os.makedirs(os.path.join(BASE_DIR, "templates"), exist_ok=True)
@@ -268,4 +276,4 @@ if __name__ == "__main__":
 
     print("Starting TradingBOT Web Dashboard server...")
     print("Access the dashboard at http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False)
+    app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
