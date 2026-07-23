@@ -82,7 +82,8 @@ def get_portfolio():
 @app.route("/api/profiles")
 def get_profiles():
     profiles = [
-        {"id": "macro", "name": "🚀 5-Year Macro Trend (Fresh 100k)", "description": "10% Risk Sizing, 2-Day Cooldown, Daily 50 SMA Filter, 5-Yr Model"},
+        {"id": "ultra", "name": "🎯 Ultra-High Conviction (0.68 Threshold - Fresh 100k)", "description": "0.68 High Confidence Filter, 3% Tight SL, 4% TP, Daily 50 SMA Filter"},
+        {"id": "macro", "name": "🚀 5-Year Macro Trend (0.57 Threshold - Fresh 100k)", "description": "10% Risk Sizing, 2-Day Cooldown, Daily 50 SMA Filter, 0.57 Threshold"},
         {"id": "legacy", "name": "📜 Legacy Account (Original Holdings)", "description": "Preserves original 50 HDFCBANK shares and historical trade log"}
     ]
     return jsonify(profiles)
@@ -242,6 +243,7 @@ def background_scheduler():
     while True:
         try:
             print(f"\n[Scheduler] Triggering automatic market scan at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
+            run_live_paper_trading(strategy=global_strategy, profile_id="ultra")
             run_live_paper_trading(strategy=global_strategy, profile_id="macro")
             run_live_paper_trading(strategy=global_strategy, profile_id="legacy")
             print("[Scheduler] Automatic market scan completed successfully for all active profiles.")

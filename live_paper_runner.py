@@ -108,10 +108,18 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
     print(f"LIVE PAPER TRADING BOT RUNNER (PROFILE: {profile_id.upper()})")
     print("==================================================")
 
-    # 1. Initialize execution and risk agents, load portfolio state
+    # 1. Initialize execution and risk agents, load portfolio state based on profile_id
     execution = ExecutionAgent(initial_capital=100000.0)
     execution.load_state(portfolio_file)
-    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.10, trailing_stop_loss_pct=0.05)
+
+    if profile_id == "ultra":
+        target_buy_threshold = 0.68
+        risk = RiskAgent(stop_loss_pct=0.03, take_profit_pct=0.04, max_allocation_pct=0.10, trailing_stop_loss_pct=0.03)
+        max_rsi_allowed = 58.0
+    else:
+        target_buy_threshold = getattr(strategy, 'buy_threshold', 0.57) if strategy else 0.57
+        risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.10, trailing_stop_loss_pct=0.05)
+        max_rsi_allowed = 65.0
 
     # 2. Fallback/Safety model training
     if strategy is None:
@@ -345,16 +353,16 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                     print(f"  [Trend Filter] Blocked BUY/AVG-DOWN for {ticker}: Price (INR {current_price:.2f}) is below Daily 50 SMA (INR {sma50:.2f})")
                     can_buy = False
 
-                # Intraday Micro-Dip check: Avoid buying at the peak of a 1-minute overbought spike (RSI > 65)
+                # Intraday Micro-Dip check: Avoid buying at the peak of a 1-minute overbought spike (RSI > max_rsi_allowed)
                 if can_buy and "RSI14" in df.columns:
                     intraday_rsi = df["RSI14"].iloc[-1] if not pd.isna(df["RSI14"].iloc[-1]) else 50.0
-                    if intraday_rsi > 65.0:
-                        print(f"  [Micro-Dip Filter] Blocked BUY for {ticker}: 1-min RSI ({intraday_rsi:.1f}) is overbought (> 65.0)")
+                    if intraday_rsi > max_rsi_allowed:
+                        print(f"  [Micro-Dip Filter] Blocked BUY for {ticker}: 1-min RSI ({intraday_rsi:.1f}) exceeds profile max ({max_rsi_allowed:.1f})")
                         can_buy = False
 
-            print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={strategy.buy_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
+            print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={target_buy_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
             
-            if signal_val == 1 and confidence >= strategy.buy_threshold and can_buy:
+            if signal_val == 1 and confidence >= target_buy_threshold and can_buy:
                 # Run Live Sentiment override check
                 sentiment_score = fetch_sentiment_score(ticker)
                 print(f"  [Sentiment Agent] Ticker: {ticker} | Sentiment: {sentiment_score:+.2f}")
