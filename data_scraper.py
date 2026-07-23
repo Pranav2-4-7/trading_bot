@@ -96,9 +96,12 @@ class IngestionAgent:
         # 8. Momentum (Rate of Change)
         df["ROC_10"] = (df["Close"] - df["Close"].shift(10)) / df["Close"].shift(10).replace(0, 0.001)
 
-        # 9. Target Variable: 1 if price goes up >= 0.30% in the next 2 trading days, else 0
+        # 9. Target Variables:
+        # Standard Target: 1 if price goes up >= 0.30% in the next 2 trading days, else 0
+        # Ultra High-Precision Target: 1 if price goes up >= 0.60% in the next 2 trading days, else 0
         future_return = (df["Close"].shift(-2) - df["Close"]) / df["Close"]
         df["Target"] = (future_return >= 0.0030).astype(int)
+        df["Target_Ultra"] = (future_return >= 0.0060).astype(int)
 
         # Drop rows where indicators or target couldn't be calculated (edges of data)
         df = df.dropna(subset=["MA200", "RSI14", "ATR", "ROC_10"])

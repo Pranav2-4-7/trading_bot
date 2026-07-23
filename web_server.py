@@ -226,16 +226,22 @@ def trigger_bot_run():
 
 def background_scheduler():
     """Background daemon thread to execute live paper trading scan cycles every 2 seconds."""
-    global global_strategy
-    print("Pre-training Strategy Agent (ML Brain) on startup...")
+    global global_strategy, ultra_strategy
+    print("Pre-training Strategy Agents (Standard Brain & Dedicated Ultra High-Precision Brain) on startup...")
     tickers = [
         "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
         "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
         "BHARTIARTL.NS", "WIPRO.NS"
     ]
-    from model import StrategyAgent
+    from model import StrategyAgent, UltraStrategyAgent
+    
+    print("\n--- Training Standard ML Brain (Macro / Legacy Profiles) ---")
     global_strategy = StrategyAgent(tickers, data_dir=DATA_DIR)
     global_strategy.train_model()
+    
+    print("\n--- Training Dedicated High-Precision ML Brain (Ultra Profile) ---")
+    ultra_strategy = UltraStrategyAgent(tickers, data_dir=DATA_DIR)
+    ultra_strategy.train_model()
 
     print("[Scheduler] Background agent scheduler thread active. Scanning every 2 seconds.")
     # Run once at startup (sleep a few seconds first to let flask bind)
@@ -243,7 +249,7 @@ def background_scheduler():
     while True:
         try:
             print(f"\n[Scheduler] Triggering automatic market scan at {time.strftime('%Y-%m-%d %H:%M:%S')}...")
-            run_live_paper_trading(strategy=global_strategy, profile_id="ultra")
+            run_live_paper_trading(strategy=ultra_strategy, profile_id="ultra")
             run_live_paper_trading(strategy=global_strategy, profile_id="macro")
             run_live_paper_trading(strategy=global_strategy, profile_id="legacy")
             print("[Scheduler] Automatic market scan completed successfully for all active profiles.")

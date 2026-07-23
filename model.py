@@ -141,8 +141,82 @@ class StrategyAgent:
         proba = self.model.predict_proba(X)[:, 1]
         signal = (proba >= self.buy_threshold).astype(int)
         ticker_name = current_features_df['Ticker'].iloc[0] if 'Ticker' in current_features_df.columns else 'Unknown'
-        print(f"[Brain Predict] Ticker: {ticker_name} | Proba: {proba[0]:.4f} | Buy Threshold: {self.buy_threshold:.4f} | Signal: {signal[0]}")
         return signal, proba
+
+
+class UltraStrategyAgent(StrategyAgent):
+    """Dedicated High-Precision Machine Learning Brain trained on strong breakout targets (+0.60% in 2 days)."""
+    def __init__(self, tickers, data_dir="data"):
+        super().__init__(tickers, data_dir=data_dir)
+        self.buy_threshold = 0.68  # Ultra-high confidence threshold
+
+    def train_model(self):
+        """Trains the High-Precision XGBoost brain on Target_Ultra with strict regularization."""
+        df = self.load_and_combine_data()
+        X = df[self.feature_cols]
+        
+        # Use Target_Ultra (+0.60% 2-day breakout target) if present, else fallback
+        if "Target_Ultra" in df.columns:
+            y = df["Target_Ultra"]
+            print("UltraStrategyAgent: Utilizing 'Target_Ultra' (+0.60% 2-day breakout target).")
+        else:
+            y = df["Target"]
+            print("UltraStrategyAgent: Warning - Target_Ultra not found, falling back to standard Target.")
+
+        # 80/20 Time-Series Split
+        split_index = int(len(df) * 0.80)
+        
+        X_train, X_test = X.iloc[:split_index], X.iloc[split_index:]
+        y_train, y_test = y.iloc[:split_index], y.iloc[split_index:]
+        test_dates = df["Date"].iloc[split_index:]
+        test_tickers = df["Ticker"].iloc[split_index:]
+        
+        print(f"[Ultra Brain] Training samples: {len(X_train)} | Testing samples: {len(X_test)}")
+        
+        # Balance class ratio using training targets
+        num_zeros = (y_train == 0).sum()
+        num_ones = (y_train == 1).sum()
+        scale_pos_weight = num_zeros / max(num_ones, 1)
+        print(f"[Ultra Brain] Calculated scale_pos_weight: {scale_pos_weight:.2f}")
+        
+        # Train High-Precision XGBoost model with conservative regularization
+        self.model = XGBClassifier(
+            n_estimators=60,
+            max_depth=4,
+            learning_rate=0.02,
+            min_child_weight=3,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            scale_pos_weight=scale_pos_weight,
+            random_state=42,
+            eval_metric="logloss"
+        )
+        
+        print("Training the Dedicated High-Precision XGBoost 'Brain'...")
+        self.model.fit(X_train, y_train)
+        
+        # Evaluate Predictions on unseen test set
+        y_pred_proba = self.model.predict_proba(X_test)[:, 1]
+        y_pred = (y_pred_proba >= self.buy_threshold).astype(int)
+        
+        accuracy = accuracy_score(y_test, y_pred)
+        print("\n================ ULTRA MODEL PERFORMANCE ================")
+        print(f"Accuracy Score: {accuracy:.2%}")
+        print("\nClassification Report:")
+        print(classification_report(y_test, y_pred, zero_division=0))
+        
+        results_df = pd.DataFrame({
+            "Date": test_dates,
+            "Ticker": test_tickers,
+            "Actual_Target": y_test,
+            "Predicted_Signal": y_pred,
+            "Confidence_Score": y_pred_proba
+        })
+        
+        buy_signals = results_df[results_df["Predicted_Signal"] == 1]
+        print(f"[Ultra Brain] Total Buy Signals Generated in Test Set: {len(buy_signals)}")
+        
+        return results_df
 
 
 if __name__ == "__main__":
