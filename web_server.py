@@ -78,13 +78,21 @@ def get_portfolio():
     with open(target_file, "r") as f:
         data = json.load(f)
 
-    # Attach latest close prices from live cache for instant UI PnL calculation
+    # Attach latest close prices from live cache & batch downloader for instant UI PnL calculation
     try:
-        from live_paper_runner import LIVE_DATA_CACHE
+        from live_paper_runner import LIVE_DATA_CACHE, fetch_batch_live_prices
         latest_prices = {}
         for t, df in LIVE_DATA_CACHE.items():
             if df is not None and not df.empty and "Close" in df.columns:
                 latest_prices[t] = float(df["Close"].iloc[-1])
+        
+        # Check active positions to guarantee EVERY active position has a live price
+        active_pos_tickers = list(data.get("active_positions", {}).keys())
+        missing_tickers = [t for t in active_pos_tickers if t not in latest_prices]
+        if missing_tickers:
+            fetched = fetch_batch_live_prices(missing_tickers)
+            latest_prices.update(fetched)
+            
         data["current_prices"] = latest_prices
     except Exception as e:
         print(f"[API Portfolio Error] Failed to attach current_prices: {e}")

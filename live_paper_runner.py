@@ -19,6 +19,39 @@ from paper_broker import ExecutionAgent, RiskAgent
 # Global cache to persist historical dataframes and avoid yfinance rate-limiting
 LIVE_DATA_CACHE = {}
 
+def fetch_batch_live_prices(tickers):
+    """Fetches batch live prices for all tickers using yfinance in one fast request."""
+    current_prices = {}
+    try:
+        data = yf.download(tickers, period="1d", interval="1m", progress=False)
+        if not data.empty and "Close" in data.columns:
+            close_df = data["Close"]
+            if isinstance(close_df, pd.Series):
+                t = tickers[0]
+                series = close_df.dropna()
+                if not series.empty:
+                    current_prices[t] = float(series.iloc[-1])
+            else:
+                for t in tickers:
+                    if t in close_df.columns:
+                        series = close_df[t].dropna()
+                        if not series.empty:
+                            current_prices[t] = float(series.iloc[-1])
+    except Exception as e:
+        print(f"[Batch Quotes Error] yf.download failed: {e}")
+
+    # Fallback to individual history if any missing
+    for t in tickers:
+        if t not in current_prices or np.isnan(current_prices[t]):
+            try:
+                hist = yf.Ticker(t).history(period="1d", interval="1m")
+                if not hist.empty and "Close" in hist.columns:
+                    current_prices[t] = float(hist["Close"].iloc[-1])
+            except Exception as err:
+                print(f"[Quote Fallback Error] {t}: {err}")
+                
+    return current_prices
+
 def fetch_sentiment_score(ticker):
     """Fetches recent news for a ticker and calculates a simple keyword sentiment score."""
     search_ticker = ticker.split(".")[0]
@@ -127,31 +160,8 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
         strategy = StrategyAgent(tickers, data_dir=data_dir)
         strategy.train_model()
 
-    # 3. Fetch latest quotes from the public REST API in one batch request
-    current_prices = {}
-    try:
-        import requests
-        url = "http://65.0.104.9/stock/list?symbols=RELIANCE,TCS,INFY,HDFCBANK&res=num"
-        response = requests.get(url, headers={'User-Agent': 'Mozilla/5.0', 'Connection': 'close'}, timeout=5.0)
-        if response.status_code == 200:
-            res_data = response.json()
-            if res_data.get("status") == "success":
-                for stock_info in res_data.get("stocks", []):
-                    sym = stock_info["symbol"]
-                    ticker = f"{sym}.NS"
-                    current_prices[ticker] = float(stock_info["last_price"])
-    except Exception as e:
-        print(f"Error fetching batch quotes from public REST API: {e}")
-
-    # Fallback to yfinance if the REST API fails
-    if not current_prices:
-        print("Falling back to yfinance for live quotes...")
-        for ticker in tickers:
-            try:
-                t = yf.Ticker(ticker)
-                current_prices[ticker] = float(t.fast_info['lastPrice'])
-            except Exception as yf_err:
-                print(f"Failed to fetch live quote for {ticker} from yfinance: {yf_err}")
+    # 3. Fetch latest quotes in one fast batch request for all 10 tickers
+    current_prices = fetch_batch_live_prices(tickers)
 
     if not current_prices:
         print("Warning: No quotes available. Skipping this tick.")
