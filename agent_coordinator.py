@@ -1,5 +1,6 @@
-import sys
 import os
+import sys
+import gc
 import pandas as pd
 import yfinance as yf
 
@@ -10,147 +11,125 @@ from data_scraper import IngestionAgent
 from model import StrategyAgent
 from paper_broker import ExecutionAgent, RiskAgent
 
-def run_agent_simulation():
-    """Coordinates the entire multi-agent trading bot pipeline and paper trading simulation."""
-    tickers = [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-        "BHARTIARTL.NS", "WIPRO.NS"
-    ]
-    start_date = "2021-01-01"
-    end_date = "2026-06-25"
-    initial_capital = 100000.0
 
-    print("==================================================")
-    print("STARTING MULTI-AGENT TRADING BOT RUN")
-    print("==================================================")
-
-    # 1. Ingestion Agent
-    ingestion = IngestionAgent(output_dir="data")
-    ingestion.download_historical_data(tickers, start_date, end_date)
+def load_all_hybrid_data(data_dir="data", tickers=None):
+    """
+    Loads and combines all hybrid feature CSV files for specified tickers into a single DataFrame.
+    """
+    if tickers is None:
+        tickers = [
+            "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+            "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+            "BHARTIARTL.NS", "WIPRO.NS"
+        ]
+    
+    combined_df = pd.DataFrame()
     for ticker in tickers:
-        ingestion.compute_technical_features(ticker)
-        ingestion.merge_price_and_fundamental_data(ticker)
-
-    # 2. Strategy Agent
-    strategy = StrategyAgent(tickers, data_dir="data")
-    test_results_df = strategy.train_model()
-
-    # 3. Execution & Risk Agent Simulation
-    test_results_df = test_results_df.sort_values("Date").reset_index(drop=True)
-
-    execution = ExecutionAgent(initial_capital)
-    risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.10, trailing_stop_loss_pct=0.05)
-    # Pre-fetch Daily SMA50 series for the backtest
-    print("\nPre-fetching Daily 50 SMA series for simulation...")
-    DAILY_SMAS = {}
-    for ticker in tickers:
-        try:
-            daily_df = yf.download(ticker, period="6mo", interval="1d", progress=False)
-            if isinstance(daily_df.columns, pd.MultiIndex):
-                daily_df.columns = daily_df.columns.get_level_values(0)
-            daily_df["SMA50"] = daily_df["Close"].rolling(window=50).mean()
-            # Index by date object for easy lookup
-            daily_df.index = pd.to_datetime(daily_df.index).date
-            DAILY_SMAS[ticker] = daily_df["SMA50"].to_dict()
-        except Exception as e:
-            print(f"Warning: Could not fetch daily SMAs for {ticker}: {e}")
-    print("\n==================================================")
-    print("STARTING PAPER TRADING SIMULATION LOOP")
-    print("==================================================")
-
-    # Group by date to process as daily ticks
-    grouped_dates = test_results_df.groupby("Date")
-
-    for date, day_data in grouped_dates:
-        # Extract daily prices
-        current_prices = {}
-        for _, row in day_data.iterrows():
-            ticker = row["Ticker"]
-            feature_file = f"data/{ticker}_hybrid_features.csv"
-            if os.path.exists(feature_file):
-                feat_df = pd.read_csv(feature_file)
-                match = feat_df.loc[feat_df["Date"] == date, "Close"]
-                if not match.empty:
-                    current_prices[ticker] = match.values[0]
-
-        # A. Risk Agent Checks active positions for Stop-Loss / Take-Profit
-        for ticker in list(execution.active_positions.keys()):
-            if ticker in current_prices:
-                position = execution.active_positions[ticker]
-                current_price = current_prices[ticker]
-                
-                # Initialize or update peak price
-                entry_price = position["entry_price"]
-                peak_price = position.get("peak_price", entry_price)
-                if current_price > peak_price:
-                    position["peak_price"] = current_price
-                    peak_price = current_price
-                    
-                should_sell, reason = risk.check_position_risk(
-                    ticker, current_price, entry_price, peak_price=peak_price
-                )
-                if should_sell:
-                    execution.sell_asset(ticker, date, current_price, reason=reason)
-
-        # B. Decisions & Execution
-        for _, row in day_data.iterrows():
-            ticker = row["Ticker"]
-            signal = row["Predicted_Signal"]
-            confidence = row["Confidence_Score"]
-
-            if ticker not in current_prices:
-                continue
-            current_price = current_prices[ticker]
-
-            # Proposed BUY Signal Check
-            if signal == 1 and confidence >= strategy.buy_threshold and ticker not in execution.active_positions:
-                # Check Daily 50 SMA trend filter
-                dt_obj = pd.to_datetime(date).date()
-                ticker_smas = DAILY_SMAS.get(ticker, {})
-                sma50 = None
-                if dt_obj in ticker_smas:
-                    sma50 = ticker_smas[dt_obj]
-                else:
-                    sorted_dates = sorted([d for d in ticker_smas.keys() if d <= dt_obj])
-                    if sorted_dates:
-                        sma50 = ticker_smas[sorted_dates[-1]]
-                        
-                if sma50 and current_price < sma50:
-                    continue  # Block buy since it's below the Daily 50 SMA
-                if not execution.is_in_cooldown(ticker, date, cooldown_days=2):
-                    allocation = risk.calculate_buy_allocation(initial_capital, execution.current_cash)
-                    if allocation > 0:
-                        execution.buy_asset(ticker, date, current_price, allocation)
-
-    # C. Liquidation of open positions at final prices
-    final_prices = {}
-    for ticker in tickers:
-        feat_df = pd.read_csv(f"data/{ticker}_hybrid_features.csv")
-        final_prices[ticker] = feat_df["Close"].iloc[-1]
+        file_path = os.path.join(data_dir, f"{ticker}_hybrid_features.csv")
+        if os.path.exists(file_path):
+            df = pd.read_csv(file_path)
+            df["Ticker"] = ticker
+            combined_df = pd.concat([combined_df, df], axis=0)
+        else:
+            print(f"Warning: Hybrid feature file for {ticker} not found at {file_path}")
+            
+    if combined_df.empty:
+        raise ValueError("No feature data loaded. Please run data_scraper.py first.")
         
-    final_portfolio_value = execution.get_portfolio_value(final_prices)
+    return combined_df
+
+
+def walk_forward_optimization(data, train_months=24, test_months=1):
+    """
+    Executes a Walk-Forward Optimization (WFO) rolling window loop over historical data.
+    
+    Args:
+        data (pd.DataFrame): Combined historical dataset containing a 'Date' column.
+        train_months (int): Rolling training window duration in months (Default: 24).
+        test_months (int): Out-of-sample testing window duration in months (Default: 1).
+        
+    Returns:
+        list: Summary log of WFO iterations and window boundaries.
+    """
+    # 1. Ensure Date column is datetime format and sort chronologically
+    df = data.copy()
+    df["Date"] = pd.to_datetime(df["Date"])
+    df = df.sort_values("Date").reset_index(drop=True)
+
+    min_date = df["Date"].min()
+    max_date = df["Date"].max()
+
+    current_train_start = min_date
+    wfo_summary = []
+    iteration = 1
+
+    train_df = None
+    test_df = None
 
     print("\n==================================================")
-    print("SIMULATION COMPLETED - FINAL REPORT")
-    print("==================================================")
-    print(f"Initial Capital:       INR {initial_capital:,.2f}")
-    print(f"Final Account Value:   INR {final_portfolio_value:,.2f}")
-    net_return = ((final_portfolio_value - initial_capital) / initial_capital) * 100
-    print(f"Total Net Return:      {net_return:+.2f}%")
+    print("STARTING WALK-FORWARD OPTIMIZATION (WFO) LOOP")
+    print(f"Data Range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
+    print(f"Config: Train Window = {train_months} Months | Test Window = {test_months} Month(s)")
+    print("==================================================\n")
 
-    if execution.trade_log:
-        trades_df = pd.DataFrame(execution.trade_log)
-        winning_trades = trades_df[trades_df["Profit_Loss"] > 0]
-        win_rate = (len(winning_trades) / len(trades_df)) * 100
-        print(f"Total Closed Trades:   {len(trades_df)}")
-        print(f"Win Rate:              {win_rate:.2f}%")
+    # 2. Rolling Walk-Forward Optimization Loop
+    while True:
+        train_end = current_train_start + pd.DateOffset(months=train_months)
+        test_end = train_end + pd.DateOffset(months=test_months)
 
-        output_dir = "data"
-        if not os.path.exists(output_dir):
-            os.makedirs(output_dir)
-        trades_df.to_csv(os.path.join(output_dir, "final_trade_ledger.csv"), index=False)
-        print("Detailed transaction ledger saved to data/final_trade_ledger.csv")
+        # Stop when training window exceeds available data boundary
+        if train_end >= max_date:
+            print(f"\n[WFO Complete] Final training window reached dataset boundary ({train_end.strftime('%Y-%m')} >= {max_date.strftime('%Y-%m')}).")
+            break
+
+        # Explicitly release memory from previous loop iteration (16GB RAM Protection)
+        if train_df is not None:
+            del train_df
+        if test_df is not None:
+            del test_df
+        gc.collect()
+
+        # Slice current 24-month training window and 1-month testing window
+        train_df = df[(df["Date"] >= current_train_start) & (df["Date"] < train_end)].copy()
+        test_df = df[(df["Date"] >= train_end) & (df["Date"] < test_end)].copy()
+
+        if train_df.empty or test_df.empty:
+            print(f"[WFO Iteration {iteration:02d}] Empty window encountered. Skipping.")
+        else:
+            print(f"[WFO Iteration {iteration:02d}]")
+            print(f"  Train Window: {current_train_start.strftime('%Y-%m-%d')} -> {train_end.strftime('%Y-%m-%d')} ({len(train_df):>6} rows)")
+            print(f"  Test Window:  {train_end.strftime('%Y-%m-%d')} -> {test_end.strftime('%Y-%m-%d')} ({len(test_df):>6} rows)")
+
+            wfo_summary.append({
+                "iteration": iteration,
+                "train_start": current_train_start.strftime('%Y-%m-%d'),
+                "train_end": train_end.strftime('%Y-%m-%d'),
+                "test_start": train_end.strftime('%Y-%m-%d'),
+                "test_end": test_end.strftime('%Y-%m-%d'),
+                "train_rows": len(train_df),
+                "test_rows": len(test_df)
+            })
+
+        # Shift training window start forward by test_months
+        current_train_start = current_train_start + pd.DateOffset(months=test_months)
+        iteration += 1
+
+    # Final cleanup of iteration references
+    if train_df is not None:
+        del train_df
+    if test_df is not None:
+        del test_df
+    gc.collect()
+
+    print(f"\n[WFO Summary] Completed {len(wfo_summary)} rolling Walk-Forward iterations.")
+    return wfo_summary
+
+
+def run_agent_simulation():
+    """Coordinates standard backtest run."""
+    print("Loading combined dataset for WFO verification...")
+    combined_data = load_all_hybrid_data()
+    walk_forward_optimization(combined_data, train_months=24, test_months=1)
 
 
 if __name__ == "__main__":
