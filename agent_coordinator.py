@@ -156,12 +156,42 @@ def walk_forward_optimization(data, train_months=24, test_months=1, tickers=None
     return wfo_summary
 
 
-def run_agent_simulation():
-    """Coordinates WFO run with ML models."""
-    print("Loading combined dataset for WFO ML verification...")
-    combined_data = load_all_hybrid_data()
-    walk_forward_optimization(combined_data, train_months=24, test_months=1)
-
-
 if __name__ == "__main__":
-    run_agent_simulation()
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    data_dir = os.path.abspath(os.path.join(base_dir, "data"))
+    if not os.path.exists(data_dir):
+        data_dir = os.path.abspath(os.path.join(base_dir, "..", "data"))
+        
+    print("==================================================")
+    print("LOADING PROCESSED FEATURE CSVS FROM DATA DIRECTORY")
+    print(f"Target Directory: {data_dir}")
+    print("==================================================")
+    
+    target_tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+        "BHARTIARTL.NS", "WIPRO.NS"
+    ]
+    
+    dataframes = []
+    for ticker in target_tickers:
+        filename = f"{ticker}_hybrid_features.csv"
+        filepath = os.path.join(data_dir, filename)
+        if os.path.exists(filepath):
+            print(f"  [Loaded] {filename}")
+            df = pd.read_csv(filepath)
+            df["Ticker"] = ticker
+            dataframes.append(df)
+        else:
+            print(f"  [Warning] {filename} not found.")
+
+    if not dataframes:
+        raise FileNotFoundError(f"No hybrid feature CSV files found in {data_dir}. Run data_scraper.py first.")
+
+    # Concatenate individual ticker DataFrames into master DataFrame
+    master_df = pd.concat(dataframes, axis=0, ignore_index=True)
+    print(f"\nConcatenated {len(dataframes)} ticker feature files into Master DataFrame.")
+    print(f"Master DataFrame Shape: {master_df.shape[0]} rows × {master_df.shape[1]} columns")
+
+    # Pass master_df into walk_forward_optimization function to kick off the backtest
+    wfo_results = walk_forward_optimization(master_df, train_months=24, test_months=1, tickers=target_tickers)
