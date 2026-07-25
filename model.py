@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 from xgboost import XGBClassifier
 from sklearn.metrics import accuracy_score, classification_report, f1_score, precision_score
+import mlflow
+import mlflow.xgboost
 
 class StrategyAgent:
     """Agent responsible for training the machine learning brain and generating trading signals."""
@@ -142,6 +144,23 @@ class StrategyAgent:
         signal = (proba >= self.buy_threshold).astype(int)
         return signal, proba
 
+    def log_custom_metrics(self, metrics_dict, step=None):
+        """Logs custom evaluation metrics (F1-score, accuracy, precision, buy_threshold) to active MLflow run."""
+        try:
+            metrics = {
+                "buy_threshold": float(self.buy_threshold),
+                "accuracy": float(metrics_dict.get("accuracy", 0.0)),
+                "f1_score": float(metrics_dict.get("f1_score", 0.0)),
+                "precision": float(metrics_dict.get("precision", 0.0)),
+                "buy_signals": float(metrics_dict.get("buy_signals", 0))
+            }
+            if step is not None:
+                mlflow.log_metrics(metrics, step=step)
+            else:
+                mlflow.log_metrics(metrics)
+        except Exception as e:
+            print(f"[MLflow Warning] Failed to log custom metrics: {e}")
+
     def train_on_slice(self, train_df):
         """Trains the XGBoost model directly on a given training DataFrame slice."""
         X_train = train_df[self.feature_cols]
@@ -159,6 +178,10 @@ class StrategyAgent:
             random_state=42,
             eval_metric="logloss"
         )
+        try:
+            mlflow.xgboost.autolog(log_models=False, silent=True)
+        except Exception:
+            pass
         self.model.fit(X_train, y_train)
         return self
 
@@ -178,7 +201,7 @@ class StrategyAgent:
         f1 = f1_score(y_test, y_pred, zero_division=0)
         prec = precision_score(y_test, y_pred, zero_division=0)
         
-        return {
+        metrics = {
             "accuracy": acc,
             "f1_score": f1,
             "precision": prec,
@@ -186,6 +209,8 @@ class StrategyAgent:
             "predictions": y_pred,
             "probabilities": y_proba
         }
+        self.log_custom_metrics(metrics)
+        return metrics
 
 
 class UltraStrategyAgent(StrategyAgent):
@@ -279,6 +304,10 @@ class UltraStrategyAgent(StrategyAgent):
             random_state=42,
             eval_metric="logloss"
         )
+        try:
+            mlflow.xgboost.autolog(log_models=False, silent=True)
+        except Exception:
+            pass
         self.model.fit(X_train, y_train)
         return self
 
