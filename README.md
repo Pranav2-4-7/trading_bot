@@ -1,92 +1,171 @@
-# TradingBOT - Premium Multi-Agent Terminal & Real-Time Scalper
+# 🚀 TradingBOT: Quantitative Multi-Agent Algorithmic Trading Terminal
 
-A professional, real-time intraday scalping bot and interactive web dashboard built to trade Indian Equities (RELIANCE, TCS, INFY, HDFCBANK). The project combines an advanced XGBoost machine learning brain, dynamic risk management, and a live financial news sentiment analysis filter.
-
----
-
-## Features
-
-- **Live 2-Second Scalping Scheduler**: Periodically polls live market quotes and runs real-time predictions in under 1ms.
-- **Premium Web Dashboard**: A responsive Flask-based web interface at `http://127.0.0.1:5000` showing:
-  - Account equity curve and cash balances.
-  - Active positions table with dynamic PnL tracking.
-  - Closed transactions ledger showing exit reasons.
-  - Real-time terminal log outputs.
-- **XGBoost ML Brain (18 Features)**: Pre-trained on 1-minute historical candles from Yahoo Finance. Features include:
-  - *Core Trend:* 50/200 period Moving Averages, distance from MAs.
-  - *Momentum:* RSI14, MACD (Signal/Hist), Rate of Change (ROC_10).
-  - *Volatility:* Bollinger Bands (Width, Upper/Lower distances), ATR, ATR_Ratio.
-  - *Base:* Close, Volume, Volume Ratio.
-  - *Fundamentals:* Net Profit Margin, Debt-to-Equity.
-- **Live RSS News Sentiment Agent**: Scraping recent Yahoo Finance news headlines via built-in XML parsing. Overrides and blocks buy orders if stock sentiment is bearish (`< -0.2`).
-- **Dynamic Profit Locking (Trailing Stop-Loss)**: Tracks the highest peak price reached for all open positions and triggers automatic exit orders if the price drops `2.0%` from its peak.
-- **Smart Averaging Down**: Allows buying more shares to lower average cost if price drops by `0.3%` or more, capped at 2 entries max per position.
+> **A multi-agent, machine learning-driven paper trading terminal pre-trained on 5 years of historical data (2021–2026) across top Nifty 50 companies.**
 
 ---
 
-## Project Structure
+## 📌 Project Overview
 
-```text
+**TradingBOT** is an end-to-end quantitative paper trading platform powered by machine learning and modular AI agents. It fetches historical daily and intraday market quotes, engineers 19 technical and fundamental hybrid features, trains custom XGBoost classification models, and executes automated multi-profile trading strategies.
+
+The system features a **Multi-Profile Architecture** that runs three distinct portfolio strategies simultaneously every 10 seconds, backed by a multi-threaded Flask web dashboard.
+
+---
+
+## 🏗️ Architecture & Component Workflow
+
+```mermaid
+graph TD
+    A[Yahoo Finance / Public APIs] -->|Raw Historical & Live Quotes| B[data_scraper.py: IngestionAgent]
+    B -->|19 Hybrid Features & Targets| C[data/ Ticker CSV Files]
+    C -->|5-Year Dataset 2021-2026| D[model.py: ML Brains]
+    D -->|Standard ML Brain: 0.57 Threshold| E1[live_paper_runner.py: Strategy Check]
+    D -->|Ultra High-Precision Brain: 0.68 Threshold| E2[live_paper_runner.py: Ultra Strategy Check]
+    E1 & E2 -->|Technical & Sentiment Signals| F[paper_broker.py: RiskAgent & ExecutionAgent]
+    F -->|Position Sizing, SL/TP, Cooldowns| G[data/ live_paper_portfolio_*.json]
+    G -->|JSON REST API & Auto-Prices| H[web_server.py: Flask App]
+    H -->|WebSockets / Polling| I[Web Dashboard UI: index.html & app.js]
+```
+
+### Modular Component Breakdown
+
+1. **`data_scraper.py` (`IngestionAgent`)**
+   * Downloads 5 years of daily quotes (2021–2026) for Nifty 50 blue chips (`RELIANCE`, `TCS`, `INFY`, `HDFCBANK`, `ICICIBANK`, `SBIN`, `ITC`, `LT`, `BHARTIARTL`, `WIPRO`).
+   * Computes technical indicators (SMA, RSI, MACD, Bollinger Bands, ATR, ROC) and matches fundamental balance sheet metrics (`Net_Profit_Margin`, `Debt_to_Equity`).
+   * Generates dual targets:
+     * `Target`: 1 if price increases >= +0.30% over the next 2 trading days.
+     * `Target_Ultra`: 1 if price increases >= +0.60% over the next 2 trading days.
+
+2. **`model.py` (`StrategyAgent` & `UltraStrategyAgent`)**
+   * **Standard Brain (`StrategyAgent`):** Trains an XGBoost Classifier on 5-year historical data using `scale_pos_weight` to offset class imbalance. Optimized for balanced F1-score with a `0.57` threshold.
+   * **Ultra High-Precision Brain (`UltraStrategyAgent`):** Inherits from `StrategyAgent`, trained specifically on `Target_Ultra` (>= +0.60% upside) using regularized parameters (`min_child_weight=3`, `colsample_bytree=0.8`, `subsample=0.8`) with a `0.68` confidence threshold.
+
+3. **`paper_broker.py` (`ExecutionAgent` & `RiskAgent`)**
+   * **`RiskAgent`:** Enforces stop-loss, trailing stop-loss, take-profit, position allocation limits (10% max capital per trade), and 2-day trade cooldowns.
+   * **`ExecutionAgent`:** Simulates order execution with realistic slippage (0.05%) and brokerage fees/taxes (0.12%). Manages averaging-down rules (max 2 buys per stock on >= 0.3% price drop).
+
+4. **`live_paper_runner.py`**
+   * Main agent loop executing live market scans.
+   * Downloads batch 1-minute live quotes using `fetch_batch_live_prices`.
+   * Evaluates trend filters (Daily 50 SMA filter), micro-dip entry filters (`RSI < 65` or `RSI < 58`), and RSS news headline sentiment before dispatching buy/sell orders.
+
+5. **`web_server.py` & Web UI (`templates/index.html`, `static/app.js`)**
+   * Multi-threaded Flask REST server (`threaded=True`).
+   * Background scheduler running market scans across all active profiles every 10 seconds.
+   * Serves live portfolio state, interactive Chart.js stock charts, trade ledgers, and live agent log streams.
+
+---
+
+## 📊 Multi-Profile Strategy Matrix
+
+The system runs **3 concurrent paper trading profiles** simultaneously:
+
+| Feature / Strategy | 📜 Legacy Account | 🚀 5-Year Macro Trend | 🎯 Ultra-High Conviction (NEW) |
+| :--- | :--- | :--- | :--- |
+| **Starting Balance** | Legacy Holdings (HDFC, etc.) | INR 100,000 | **INR 100,000 (Fresh)** |
+| **ML Engine** | Standard Brain (`StrategyAgent`) | Standard Brain (`StrategyAgent`) | **Dedicated `UltraStrategyAgent`** |
+| **Target Upside** | >= +0.30% in 2 days | >= +0.30% in 2 days | **>= +0.60% in 2 days (`Target_Ultra`)** |
+| **ML Buy Threshold** | `0.57` | `0.57` | **`0.68` (High Confidence)** |
+| **Stop Loss (SL)** | `5.0%` | `5.0%` | **`3.0%` (Tighter Protection)** |
+| **Take Profit (TP)** | `5.0%` | `5.0%` | **`4.0%` (Quicker Lock-in)** |
+| **Trend Filter** | Daily 50 SMA | Daily 50 SMA | **Daily 50 SMA** |
+| **Intraday Dip Filter** | `RSI < 65` | `RSI < 65` | **`RSI < 58` (Pullback Entries Only)** |
+| **Position Allocation** | Max 10% Cash | Max 10% Cash | **Max 10% Cash** |
+
+---
+
+## 📈 Feature Engineering Pipeline (19 Features)
+
+Each sample vector X_t consists of:
+
+1. **Price & Volume:** `Close`, `Volume`, `Volume_Ratio` (Volume / 20-period SMA Volume)
+2. **Moving Averages:** `MA50`, `MA200`, `Dist_MA50`, `Dist_MA200`
+3. **Momentum Indicators:** `RSI14`, `ROC_10` (10-period Rate of Change)
+4. **MACD Oscillators:** `MACD`, `MACD_Signal`, `MACD_Hist`
+5. **Volatility Bands:** `BB_Upper_Dist`, `BB_Lower_Dist`, `BB_Width`, `ATR`, `ATR_Ratio`
+6. **Financial Fundamentals:** `Net_Profit_Margin`, `Debt_to_Equity`
+
+---
+
+## 🛡️ Risk & Execution Rules
+
+1. **Position Sizing:** Allocation = min(Current Cash, Initial Capital * 0.10).
+2. **Slippage & Fees:**
+   * Buy Execution Price = Current Price * 1.0005 (+0.05% buy slippage).
+   * Sell Execution Price = Current Price * 0.9995 (-0.05% sell slippage).
+   * Transaction Taxes & Brokerage = 0.12% of total trade value.
+3. **Averaging Down Rule:** If position is already open and price drops >= 0.30% from entry, the bot allows **one additional averaging buy** (max 2 entries total).
+4. **2-Day Cooldown:** Selling a position locks that ticker for 2 full trading days to prevent revenge trading / churn.
+
+---
+
+## 📂 Repository File Structure
+
+```
 TradingBOT/
-  static/
-    app.js              # Frontend dashboard client logic
-    style.css           # Terminal styles and layout
-  templates/
-    index.html          # Web dashboard markup
-  agent_coordinator.py  # Historical backtesting simulation coordinator
-  data_scraper.py      # Technical feature engineering and data ingestion
-  live_paper_runner.py  # 2-second scalper execution runner & sentiment agent
-  model.py              # XGBoost ML Brain classifier and training script
-  paper_broker.py       # Simulated broker with averaging down & trailing SL
-  web_server.py         # Flask dashboard API and scan scheduler
+├── data/                            # Processed CSVs & portfolio state JSONs
+│   ├── RELIANCE.NS_hybrid_features.csv
+│   ├── live_paper_portfolio_ultra.json
+│   ├── live_paper_portfolio_macro.json
+│   └── live_paper_portfolio_legacy.json
+├── templates/
+│   └── index.html                   # HTML5 Web Terminal Dashboard
+├── static/
+│   ├── app.js                       # Frontend JavaScript (Chart.js & API polling)
+│   └── style.css                    # Dark Glassmorphism CSS styles
+├── data_scraper.py                  # IngestionAgent: Downloads data & engineers features
+├── model.py                         # StrategyAgent & UltraStrategyAgent ML models
+├── paper_broker.py                  # ExecutionAgent & RiskAgent simulation engines
+├── live_paper_runner.py             # Live trading scan loop execution script
+├── agent_coordinator.py             # Historical backtest simulation coordinator
+├── web_server.py                    # Multi-threaded Flask Web Dashboard REST server
+└── README.md                        # Documentation & AI Improvement Guide
 ```
 
 ---
 
-## Setup & Running the Bot
+## ⚙️ Installation & Running Locally
 
-### 1. Initialize Virtual Environment
-Ensure you have Python 3.10+ installed. Initialize the virtual environment and install dependencies:
+### Prerequisites
+* Python 3.10+
+* Virtual Environment setup
 
+### 1. Clone Repository & Install Dependencies
 ```bash
-# Create and activate environment
-python -m venv .venv
-.venv\Scripts\activate
-
-# Install required packages
-pip install requests yfinance pandas xgboost scikit-learn Flask beautifulsoup4
+git clone https://github.com/Pranav2-4-7/trading_bot.git
+cd trading_bot
+pip install -r requirements.txt
 ```
 
-### 2. Start the Live Scalper & Dashboard
-Run the web server. This will pre-train the XGBoost brain on startup and kick off the 2-second background scheduler thread:
-
+### 2. Ingest Data & Engineer Features
 ```bash
-python TradingBOT/web_server.py
+python data_scraper.py
 ```
 
-Open **`http://127.0.0.1:5000`** in your browser to view the active terminal, logs, and portfolio metrics.
+### 3. Run Historical Simulation / Backtest
+```bash
+python agent_coordinator.py
+```
+
+### 4. Launch Live Web Terminal
+```bash
+python web_server.py
+```
+Open **[http://127.0.0.1:5000/](http://127.0.0.1:5000/)** in your web browser.
 
 ---
 
-## Model Evaluation & Performance
+## 🔮 AI Improvement & Extension Roadmap
 
-You can evaluate the XGBoost Strategy Agent's standalone accuracy and classification metrics directly:
+*If you are providing this repository to an AI agent or LLM to improve the codebase, here are the recommended areas of enhancement:*
 
-```bash
-python TradingBOT/model.py
-```
-
-**Latest Brain Accuracy Report:**
-* **Accuracy Score**: `59.82%`
-* **Buy Signal Precision**: `17%`
-* **Positive F1-Score**: `0.26`
-
----
-
-## Simulation Backtests
-
-To run a historical paper trading simulation to verify your parameters (thresholds, stop losses, etc.):
-
-```bash
-python TradingBOT/agent_coordinator.py
-```
+1. **Portfolio Optimization (Markowitz / Sharpe Maximization):**
+   * Currently, allocation is fixed at 10% per trade. Implement dynamic Mean-Variance Optimization or Kelly Criterion for optimal capital allocation.
+2. **Deep Learning Sequence Models (LSTM / Transformer / Temporal Fusion Transformer):**
+   * Replace/augment XGBoost with an LSTM or Transformer model capable of capturing long-term temporal dependencies across multiple candle lookbacks.
+3. **Reinforcement Learning Execution (PPO / Deep Q-Learning):**
+   * Train a Proximal Policy Optimization (PPO) agent that learns adaptive exit strategies (dynamic SL/TP) based on real-time volatility.
+4. **Order Book Microstructure & Level-2 Quote Integration:**
+   * Incorporate bid-ask spread depth, order flow imbalance, and volume delta to optimize intraday execution timing.
+5. **FinBERT / LLM Multi-Modal Sentiment Parsing:**
+   * Upgrade the basic RSS headline sentiment matching to a fine-tuned FinBERT embeddings pipeline to classify financial news context dynamically.
