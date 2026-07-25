@@ -1,7 +1,11 @@
 import os 
+import sys
+import subprocess
 import pandas as pd
 import yfinance as yf
 import numpy as np
+
+from drift_monitor import evaluate_market_drift
 
 class IngestionAgent:
     """Agent responsible for fetching and preparing price and fundamental data."""
@@ -195,6 +199,24 @@ class IngestionAgent:
         hybrid_path = os.path.join(self.output_dir, f"{ticker}_hybrid_features.csv")
         tech_df.to_csv(hybrid_path, index=False)
         print(f"Saved hybrid features to {hybrid_path}")
+
+        # Trigger Market Drift Evaluation comparing original 2021-2026 baseline against recent 30 days
+        if len(tech_df) > 30:
+            reference_df = tech_df.iloc[:-30].copy()
+            recent_30d_df = tech_df.tail(30).copy()
+            
+            try:
+                drift_detected = evaluate_market_drift(reference_df, recent_30d_df)
+                if drift_detected:
+                    print("\n" + "!" * 80)
+                    print("WARNING: Severe Market Drift Detected. Pausing Live Execution and Triggering Emergency Retraining.")
+                    print("!" * 80 + "\n")
+                    
+                    coordinator_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "agent_coordinator.py")
+                    print(f"Launching emergency model retraining pipeline: {coordinator_script}")
+                    subprocess.run([sys.executable, coordinator_script], check=True)
+            except Exception as drift_err:
+                print(f"[Drift Monitor Warning] Error executing drift check for {ticker}: {drift_err}")
 
 
 if __name__ == "__main__":
