@@ -3,6 +3,8 @@ import sys
 import gc
 import pandas as pd
 import yfinance as yf
+import mlflow
+import mlflow.xgboost
 
 # Add current folder to path to allow importing adjacent modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -75,6 +77,12 @@ def walk_forward_optimization(data, train_months=24, test_months=1, tickers=None
     train_df = None
     test_df = None
 
+    # Set MLflow experiment name before entering WFO loop
+    try:
+        mlflow.set_experiment("Nifty50_Walk_Forward_Optimization")
+    except Exception as exp_err:
+        print(f"[MLflow Warning] Could not set experiment: {exp_err}")
+
     print("\n==================================================")
     print("STARTING WALK-FORWARD OPTIMIZATION (WFO) LOOP WITH ML AGENTS")
     print(f"Data Range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
@@ -109,21 +117,69 @@ def walk_forward_optimization(data, train_months=24, test_months=1, tickers=None
             print(f"  Train Window: {current_train_start.strftime('%Y-%m-%d')} -> {train_end.strftime('%Y-%m-%d')} ({len(train_df):>6} rows)")
             print(f"  Test Window:  {train_end.strftime('%Y-%m-%d')} -> {test_end.strftime('%Y-%m-%d')} ({len(test_df):>6} rows)")
 
-            # Instantiate StrategyAgent and UltraStrategyAgent for this slice
-            strategy_agent = StrategyAgent(tickers=tickers, data_dir="data")
-            ultra_agent = UltraStrategyAgent(tickers=tickers, data_dir="data")
+            fold_run_name = f"Fold_{train_end.date()}"
+            with mlflow.start_run(run_name=fold_run_name, nested=True):
+                # Log slice parameters to MLflow
+                mlflow.log_params({
+                    "train_start": current_train_start.strftime('%Y-%m-%d'),
+                    "train_end": train_end.strftime('%Y-%m-%d'),
+                    "test_start": train_end.strftime('%Y-%m-%d'),
+                    "test_end": test_end.strftime('%Y-%m-%d'),
+                    "train_rows": len(train_df),
+                    "test_rows": len(test_df),
+                    "iteration": iteration
+                })
 
-            # Train both models on the rolling 24-month train_df
-            strategy_agent.train_on_slice(train_df)
-            ultra_agent.train_on_slice(train_df)
+                # Instantiate StrategyAgent and UltraStrategyAgent for this slice
+                strategy_agent = StrategyAgent(tickers=tickers, data_dir="data")
+                ultra_agent = UltraStrategyAgent(tickers=tickers, data_dir="data")
 
-            # Evaluate predictions on the unseen 1-month test_df
-            strat_metrics = strategy_agent.evaluate_on_slice(test_df, target_col="Target")
-            ultra_metrics = ultra_agent.evaluate_on_slice(test_df, target_col="Target_Ultra")
+                # Train both models on the rolling 24-month train_df
+                strategy_agent.train_on_slice(train_df)
+                ultra_agent.train_on_slice(train_df)
 
-            # Log metrics to console for this specific rolling window
-            print(f"  └─ Standard Brain (0.57 Threshold) | Acc: {strat_metrics['accuracy']:.2%} | F1: {strat_metrics['f1_score']:.2%} | Prec: {strat_metrics['precision']:.2%} | Buy Signals: {strat_metrics['buy_signals']}")
-            print(f"  └─ Ultra Brain    (0.68 Threshold) | Acc: {ultra_metrics['accuracy']:.2%} | F1: {ultra_metrics['f1_score']:.2%} | Prec: {ultra_metrics['precision']:.2%} | Buy Signals: {ultra_metrics['buy_signals']}")
+                # Evaluate predictions on the unseen 1-month test_df
+                strat_metrics = strategy_agent.evaluate_on_slice(test_df, target_col="Target")
+                ultra_metrics = ultra_agent.evaluate_on_slice(test_df, target_col="Target_Ultra")
+
+                # Log metrics to MLflow for this fold
+                mlflow.log_metrics({
+                    "standard_test_f1": float(strat_metrics['f1_score']),
+                    "standard_test_acc": float(strat_metrics['accuracy']),
+                    "standard_test_prec": float(strat_metrics['precision']),
+                    "standard_buy_signals": float(strat_metrics['buy_signals']),
+                    "ultra_test_f1": float(ultra_metrics['f1_score']),
+                    "ultra_test_acc": float(ultra_metrics['accuracy']),
+                    "ultra_test_prec": float(ultra_metrics['precision']),
+                    "ultra_buy_signals": float(ultra_metrics['buy_signals'])
+                })
+
+                # Log metrics to console for this specific rolling window
+                print(f"  └─ Standard Brain (0.57 Threshold) | Acc: {strat_metrics['accuracy']:.2%} | F1: {strat_metrics['f1_score']:.2%} | Prec: {strat_metrics['precision']:.2%} | Buy Signals: {strat_metrics['buy_signals']}")
+                print(f"  └─ Ultra Brain    (0.68 Threshold) | Acc: {ultra_metrics['accuracy']:.2%} | F1: {ultra_metrics['f1_score']:.2%} | Prec: {ultra_metrics['precision']:.2%} | Buy Signals: {ultra_metrics['buy_signals']}")
+
+                # Model Registry Promotion Gating (F1 > 0.60)
+                if strat_metrics['f1_score'] > 0.60:
+                    print(f"  └─ [Model Registry] Standard Brain F1 ({strat_metrics['f1_score']:.2%}) > 60%! Registering model...")
+                    try:
+                        mlflow.xgboost.log_model(
+                            strategy_agent.model,
+                            artifact_path="standard_model",
+                            registered_model_name="TradingBOT_XGBoost_Production"
+                        )
+                    except Exception as reg_err:
+                        print(f"  └─ [Model Registry Warning] {reg_err}")
+
+                if ultra_metrics['f1_score'] > 0.60:
+                    print(f"  └─ [Model Registry] Ultra Brain F1 ({ultra_metrics['f1_score']:.2%}) > 60%! Registering model...")
+                    try:
+                        mlflow.xgboost.log_model(
+                            ultra_agent.model,
+                            artifact_path="ultra_model",
+                            registered_model_name="TradingBOT_XGBoost_Production"
+                        )
+                    except Exception as reg_err:
+                        print(f"  └─ [Model Registry Warning] {reg_err}")
 
             wfo_summary.append({
                 "iteration": iteration,
