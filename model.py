@@ -140,8 +140,52 @@ class StrategyAgent:
         X = current_features_df[self.feature_cols]
         proba = self.model.predict_proba(X)[:, 1]
         signal = (proba >= self.buy_threshold).astype(int)
-        ticker_name = current_features_df['Ticker'].iloc[0] if 'Ticker' in current_features_df.columns else 'Unknown'
         return signal, proba
+
+    def train_on_slice(self, train_df):
+        """Trains the XGBoost model directly on a given training DataFrame slice."""
+        X_train = train_df[self.feature_cols]
+        y_train = train_df["Target"]
+        
+        num_zeros = (y_train == 0).sum()
+        num_ones = (y_train == 1).sum()
+        scale_pos_weight = num_zeros / max(num_ones, 1)
+        
+        self.model = XGBClassifier(
+            n_estimators=50,
+            max_depth=5,
+            learning_rate=0.03,
+            scale_pos_weight=scale_pos_weight,
+            random_state=42,
+            eval_metric="logloss"
+        )
+        self.model.fit(X_train, y_train)
+        return self
+
+    def evaluate_on_slice(self, test_df, target_col="Target"):
+        """Evaluates trained model on unseen test DataFrame slice."""
+        if self.model is None:
+            raise ValueError("Model is not trained yet.")
+        
+        target_col = target_col if target_col in test_df.columns else "Target"
+        X_test = test_df[self.feature_cols]
+        y_test = test_df[target_col]
+        
+        y_proba = self.model.predict_proba(X_test)[:, 1]
+        y_pred = (y_proba >= self.buy_threshold).astype(int)
+        
+        acc = accuracy_score(y_test, y_pred)
+        f1 = f1_score(y_test, y_pred, zero_division=0)
+        prec = precision_score(y_test, y_pred, zero_division=0)
+        
+        return {
+            "accuracy": acc,
+            "f1_score": f1,
+            "precision": prec,
+            "buy_signals": int((y_pred == 1).sum()),
+            "predictions": y_pred,
+            "probabilities": y_proba
+        }
 
 
 class UltraStrategyAgent(StrategyAgent):
@@ -213,10 +257,30 @@ class UltraStrategyAgent(StrategyAgent):
             "Confidence_Score": y_pred_proba
         })
         
-        buy_signals = results_df[results_df["Predicted_Signal"] == 1]
-        print(f"[Ultra Brain] Total Buy Signals Generated in Test Set: {len(buy_signals)}")
-        
         return results_df
+
+    def train_on_slice(self, train_df):
+        """Trains the High-Precision XGBoost model on Target_Ultra for a training slice."""
+        X_train = train_df[self.feature_cols]
+        y_train = train_df["Target_Ultra"] if "Target_Ultra" in train_df.columns else train_df["Target"]
+        
+        num_zeros = (y_train == 0).sum()
+        num_ones = (y_train == 1).sum()
+        scale_pos_weight = num_zeros / max(num_ones, 1)
+        
+        self.model = XGBClassifier(
+            n_estimators=60,
+            max_depth=4,
+            learning_rate=0.02,
+            min_child_weight=3,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            scale_pos_weight=scale_pos_weight,
+            random_state=42,
+            eval_metric="logloss"
+        )
+        self.model.fit(X_train, y_train)
+        return self
 
 
 if __name__ == "__main__":

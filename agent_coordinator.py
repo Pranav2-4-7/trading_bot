@@ -8,7 +8,7 @@ import yfinance as yf
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from data_scraper import IngestionAgent
-from model import StrategyAgent
+from model import StrategyAgent, UltraStrategyAgent
 from paper_broker import ExecutionAgent, RiskAgent
 
 
@@ -39,18 +39,27 @@ def load_all_hybrid_data(data_dir="data", tickers=None):
     return combined_df
 
 
-def walk_forward_optimization(data, train_months=24, test_months=1):
+def walk_forward_optimization(data, train_months=24, test_months=1, tickers=None):
     """
-    Executes a Walk-Forward Optimization (WFO) rolling window loop over historical data.
+    Executes a Walk-Forward Optimization (WFO) rolling window loop over historical data
+    integrated with StrategyAgent (0.57 threshold) and UltraStrategyAgent (0.68 threshold).
     
     Args:
         data (pd.DataFrame): Combined historical dataset containing a 'Date' column.
         train_months (int): Rolling training window duration in months (Default: 24).
         test_months (int): Out-of-sample testing window duration in months (Default: 1).
+        tickers (list): List of ticker symbols (Optional).
         
     Returns:
-        list: Summary log of WFO iterations and window boundaries.
+        list: Summary log of WFO iterations, metrics, and window boundaries.
     """
+    if tickers is None:
+        tickers = [
+            "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+            "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+            "BHARTIARTL.NS", "WIPRO.NS"
+        ]
+
     # 1. Ensure Date column is datetime format and sort chronologically
     df = data.copy()
     df["Date"] = pd.to_datetime(df["Date"])
@@ -67,7 +76,7 @@ def walk_forward_optimization(data, train_months=24, test_months=1):
     test_df = None
 
     print("\n==================================================")
-    print("STARTING WALK-FORWARD OPTIMIZATION (WFO) LOOP")
+    print("STARTING WALK-FORWARD OPTIMIZATION (WFO) LOOP WITH ML AGENTS")
     print(f"Data Range: {min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}")
     print(f"Config: Train Window = {train_months} Months | Test Window = {test_months} Month(s)")
     print("==================================================\n")
@@ -100,6 +109,22 @@ def walk_forward_optimization(data, train_months=24, test_months=1):
             print(f"  Train Window: {current_train_start.strftime('%Y-%m-%d')} -> {train_end.strftime('%Y-%m-%d')} ({len(train_df):>6} rows)")
             print(f"  Test Window:  {train_end.strftime('%Y-%m-%d')} -> {test_end.strftime('%Y-%m-%d')} ({len(test_df):>6} rows)")
 
+            # Instantiate StrategyAgent and UltraStrategyAgent for this slice
+            strategy_agent = StrategyAgent(tickers=tickers, data_dir="data")
+            ultra_agent = UltraStrategyAgent(tickers=tickers, data_dir="data")
+
+            # Train both models on the rolling 24-month train_df
+            strategy_agent.train_on_slice(train_df)
+            ultra_agent.train_on_slice(train_df)
+
+            # Evaluate predictions on the unseen 1-month test_df
+            strat_metrics = strategy_agent.evaluate_on_slice(test_df, target_col="Target")
+            ultra_metrics = ultra_agent.evaluate_on_slice(test_df, target_col="Target_Ultra")
+
+            # Log metrics to console for this specific rolling window
+            print(f"  └─ Standard Brain (0.57 Threshold) | Acc: {strat_metrics['accuracy']:.2%} | F1: {strat_metrics['f1_score']:.2%} | Prec: {strat_metrics['precision']:.2%} | Buy Signals: {strat_metrics['buy_signals']}")
+            print(f"  └─ Ultra Brain    (0.68 Threshold) | Acc: {ultra_metrics['accuracy']:.2%} | F1: {ultra_metrics['f1_score']:.2%} | Prec: {ultra_metrics['precision']:.2%} | Buy Signals: {ultra_metrics['buy_signals']}")
+
             wfo_summary.append({
                 "iteration": iteration,
                 "train_start": current_train_start.strftime('%Y-%m-%d'),
@@ -107,7 +132,13 @@ def walk_forward_optimization(data, train_months=24, test_months=1):
                 "test_start": train_end.strftime('%Y-%m-%d'),
                 "test_end": test_end.strftime('%Y-%m-%d'),
                 "train_rows": len(train_df),
-                "test_rows": len(test_df)
+                "test_rows": len(test_df),
+                "standard_acc": strat_metrics['accuracy'],
+                "standard_f1": strat_metrics['f1_score'],
+                "standard_prec": strat_metrics['precision'],
+                "ultra_acc": ultra_metrics['accuracy'],
+                "ultra_f1": ultra_metrics['f1_score'],
+                "ultra_prec": ultra_metrics['precision']
             })
 
         # Shift training window start forward by test_months
@@ -121,13 +152,13 @@ def walk_forward_optimization(data, train_months=24, test_months=1):
         del test_df
     gc.collect()
 
-    print(f"\n[WFO Summary] Completed {len(wfo_summary)} rolling Walk-Forward iterations.")
+    print(f"\n[WFO Summary] Completed {len(wfo_summary)} rolling Walk-Forward ML iterations.")
     return wfo_summary
 
 
 def run_agent_simulation():
-    """Coordinates standard backtest run."""
-    print("Loading combined dataset for WFO verification...")
+    """Coordinates WFO run with ML models."""
+    print("Loading combined dataset for WFO ML verification...")
     combined_data = load_all_hybrid_data()
     walk_forward_optimization(combined_data, train_months=24, test_months=1)
 
