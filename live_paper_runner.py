@@ -260,13 +260,14 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             df["BB_Lower_Dist"] = (df["Close"] - lower_bb) / lower_bb.replace(0, 0.001)
             df["BB_Width"] = (upper_bb - lower_bb) / sma20.replace(0, 0.001)
 
-            # 6. ATR
+            # 6. ATR & 20-period Average Volume
             tr1 = df["High"] - df["Low"]
             tr2 = (df["High"] - df["Close"].shift(1)).abs()
             tr3 = (df["Low"] - df["Close"].shift(1)).abs()
             tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
             df["ATR"] = tr.rolling(window=14).mean()
             df["ATR_Ratio"] = df["ATR"] / df["Close"].replace(0, 0.001)
+            df["Volume_20SMA"] = df["Volume"].rolling(window=20).mean()
 
             # 7. Distance from MAs
             df["Dist_MA50"] = (df["Close"] - df["MA50"]) / df["MA50"].replace(0, 0.001)
@@ -319,7 +320,10 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                 ticker, current_price, entry_price, peak_price=peak_price
             )
             if should_sell:
-                execution.sell_asset(ticker, today_str, current_price, reason=reason)
+                t_row = today_features.get(ticker)
+                atr_val = float(t_row["ATR"].iloc[-1]) if (t_row is not None and "ATR" in t_row.columns and not pd.isna(t_row["ATR"].iloc[-1])) else (0.015 * current_price)
+                vol_val = float(t_row["Volume_20SMA"].iloc[-1]) if (t_row is not None and "Volume_20SMA" in t_row.columns and not pd.isna(t_row["Volume_20SMA"].iloc[-1])) else 1000000.0
+                execution.sell_asset(ticker, today_str, current_price, reason=reason, atr_14=atr_val, avg_volume_20=vol_val)
 
     # 6. Strategy & Decision Execution: Process signals
     print("\n[Strategy Check] Evaluating model signals...")
@@ -387,7 +391,10 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                         )
                         print(f"  [DEBUG BUY] allocation={allocation} | current_cash={execution.current_cash}")
                         if allocation > 0:
-                            execution.buy_asset(ticker, today_str, current_price, allocation)
+                            t_row = features_df
+                            atr_val = float(t_row["ATR"].iloc[-1]) if ("ATR" in t_row.columns and not pd.isna(t_row["ATR"].iloc[-1])) else (0.015 * current_price)
+                            vol_val = float(t_row["Volume_20SMA"].iloc[-1]) if ("Volume_20SMA" in t_row.columns and not pd.isna(t_row["Volume_20SMA"].iloc[-1])) else 1000000.0
+                            execution.buy_asset(ticker, today_str, current_price, allocation, atr_14=atr_val, avg_volume_20=vol_val)
                     else:
                         print(f"  Buy signal ignored: {ticker} is in cooldown block.")
 
