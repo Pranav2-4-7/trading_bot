@@ -10,6 +10,26 @@ let rawTickerData = []; // Store raw records fetched from API
 let currentTimeframeDays = "all"; // Default Max (all cached intraday data)
 
 document.addEventListener("DOMContentLoaded", () => {
+    // Initialize Lenis Smooth Scroll (Darkroom Engineering)
+    if (typeof Lenis !== "undefined") {
+        window.lenis = new Lenis({
+            duration: 1.2,
+            easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)),
+            orientation: 'vertical',
+            gestureOrientation: 'vertical',
+            smoothWheel: true,
+            wheelMultiplier: 1.0,
+            touchMultiplier: 1.5,
+            infinite: false
+        });
+
+        function raf(time) {
+            window.lenis.raf(time);
+            requestAnimationFrame(raf);
+        }
+        requestAnimationFrame(raf);
+    }
+
     // Initial fetch of portfolio status
     fetchPortfolioData().then(() => {
         const defaultTicker = document.getElementById("ticker-select").value;
