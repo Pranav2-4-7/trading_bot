@@ -1,3 +1,4 @@
+import math
 import os
 import pandas as pd
 
@@ -9,8 +10,34 @@ class ExecutionAgent:
         self.active_positions = {}  # {ticker: {entry_price: float, shares: int, entry_date: str}}
         self.cooldowns = {}         # {ticker: last_exit_date_str}
         self.trade_log = []
-        self.SLIPPAGE_PCT = 0.0005          # 0.05% slippage penalty
         self.BROKERAGE_AND_TAXES_PCT = 0.0012 # ~0.12% fees
+
+    def calculate_dynamic_slippage(self, price, order_quantity, atr_14, avg_volume_20, bid_ask_spread=None):
+        """
+        Calculates dynamic liquidity- and volatility-based slippage.
+        
+        Args:
+            price (float): Asset current market price.
+            order_quantity (int or float): Number of shares in order.
+            atr_14 (float): 14-period Average True Range.
+            avg_volume_20 (float): 20-period Average Volume.
+            bid_ask_spread (float, optional): Bid-ask spread. If None, estimated as 2 bps (0.0002 * price).
+            
+        Returns:
+            float: Total price slippage penalty per share in currency units.
+        """
+        if bid_ask_spread is None or bid_ask_spread <= 0:
+            half_spread = 0.0002 * price
+        else:
+            half_spread = bid_ask_spread / 2.0
+
+        atr_val = atr_14 if (atr_14 is not None and atr_14 > 0) else (0.015 * price)
+        vol_val = avg_volume_20 if (avg_volume_20 is not None and avg_volume_20 > 0) else 1000000.0
+        qty_val = max(float(order_quantity), 1.0)
+
+        impact = 0.1 * atr_val * math.sqrt(qty_val / max(vol_val, 1.0))
+        total_slippage = half_spread + impact
+        return total_slippage
 
     def save_state(self, filepath="data/live_paper_portfolio.json"):
         """Saves current cash, positions, cooldowns, and trade log to a JSON file."""
@@ -48,13 +75,17 @@ class ExecutionAgent:
         self.trade_log = state.get("trade_log", [])
         print(f"Portfolio state loaded from {filepath}")
 
-    def buy_asset(self, ticker, date, current_price, allocation):
-        """Simulates buying an asset, deducting cash, and recording position."""
+    def buy_asset(self, ticker, date, current_price, allocation, atr_14=None, avg_volume_20=None, bid_ask_spread=None):
+        """Simulates buying an asset using dynamic slippage, deducting cash, and recording position."""
         if self.current_cash < allocation:
             return False
 
-        # Apply buy slippage (buying slightly higher)
-        execution_price = current_price * (1 + self.SLIPPAGE_PCT)
+        # Estimate order quantity for dynamic slippage calculation
+        approx_shares = max(int(allocation // current_price), 1)
+        total_slippage = self.calculate_dynamic_slippage(current_price, approx_shares, atr_14, avg_volume_20, bid_ask_spread)
+
+        # Buy Price = Current Price + Total Slippage
+        execution_price = current_price + total_slippage
         shares_to_buy = int(allocation // execution_price)
 
         if shares_to_buy > 0:
@@ -81,7 +112,7 @@ class ExecutionAgent:
                         "peak_price": average_price
                     }
                     print(
-                        f"[{date}] AVG-DOWN | {ticker:=<11} | Added {shares_to_buy} Shares @ INR {execution_price:.2f} | New Avg Price: INR {average_price:.2f}"
+                        f"[{date}] AVG-DOWN | {ticker:=<11} | Added {shares_to_buy} Shares @ INR {execution_price:.2f} (Slippage: INR {total_slippage:.2f}) | New Avg Price: INR {average_price:.2f}"
                     )
                 else:
                     self.active_positions[ticker] = {
@@ -92,21 +123,23 @@ class ExecutionAgent:
                         "peak_price": execution_price
                     }
                     print(
-                        f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ INR {execution_price:.2f} | Fees: INR {transaction_fees:.2f}"
+                        f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ INR {execution_price:.2f} (Slippage: INR {total_slippage:.2f}) | Fees: INR {transaction_fees:.2f}"
                     )
                 return True
         return False
 
-    def sell_asset(self, ticker, date, current_price, reason="Model Signal"):
-        """Simulates selling an asset, adding cash, and writing to ledger."""
+    def sell_asset(self, ticker, date, current_price, reason="Model Signal", atr_14=None, avg_volume_20=None, bid_ask_spread=None):
+        """Simulates selling an asset using dynamic slippage, adding cash, and writing to ledger."""
         if ticker not in self.active_positions:
             return False
 
         position = self.active_positions[ticker]
         shares_to_sell = position["shares"]
 
-        # Apply sell slippage (selling slightly lower)
-        execution_price = current_price * (1 - self.SLIPPAGE_PCT)
+        total_slippage = self.calculate_dynamic_slippage(current_price, shares_to_sell, atr_14, avg_volume_20, bid_ask_spread)
+
+        # Sell Price = Current Price - Total Slippage
+        execution_price = current_price - total_slippage
         gross_revenue = shares_to_sell * execution_price
         transaction_fees = gross_revenue * self.BROKERAGE_AND_TAXES_PCT
         net_revenue = gross_revenue - transaction_fees
@@ -115,7 +148,7 @@ class ExecutionAgent:
         self.current_cash += net_revenue
 
         print(
-            f"[{date}] SELL | {ticker:=<11} | {shares_to_sell} Shares @ INR {execution_price:.2f} | PnL: INR {profit_loss:+.2f} ({reason})"
+            f"[{date}] SELL | {ticker:=<11} | {shares_to_sell} Shares @ INR {execution_price:.2f} (Slippage: INR {total_slippage:.2f}) | PnL: INR {profit_loss:+.2f} ({reason})"
         )
 
         self.trade_log.append({
