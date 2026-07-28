@@ -4,6 +4,20 @@
 
 ---
 
+<!-- LIVE_METRICS_START -->
+## 📈 Live Portfolio Performance Metrics
+
+> **Last Auto-Synced:** `2026-07-28 11:08:48 IST`
+
+| Strategy Profile | Initial Capital | Valuation | Cash Balance | Net Return | Win Rate | Open Positions | Closed Trades |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **🚀 5-Year Macro Trend (0.57 Threshold)** | INR 100,000.00 | **INR 100,000.00** | INR 100,000.00 | **`+0.00%`** ⚪ | **`0.0%`** | 0 | 0 |
+| **🎯 Ultra-High Conviction (0.68 Threshold)** | INR 100,000.00 | **INR 100,000.00** | INR 100,000.00 | **`+0.00%`** ⚪ | **`0.0%`** | 0 | 0 |
+| **📜 Legacy Account** | INR 100,000.00 | **INR 100,000.00** | INR 100,000.00 | **`+0.00%`** ⚪ | **`0.0%`** | 0 | 0 |
+<!-- LIVE_METRICS_END -->
+
+---
+
 ## 📌 Project Overview
 
 **TradingBOT** is an end-to-end quantitative paper trading platform powered by machine learning and modular AI agents. It fetches historical daily and intraday market quotes, engineers 19 technical and fundamental hybrid features, trains custom XGBoost classification models, and executes automated multi-profile trading strategies.
