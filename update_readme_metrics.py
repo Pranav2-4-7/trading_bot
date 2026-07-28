@@ -54,11 +54,24 @@ def compute_profile_metrics(state):
         "closed_trades": total_closed
     }
 
+def get_portfolio_path(filename):
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(base_dir, "..", "data", filename),
+        os.path.join(base_dir, "data", filename),
+        os.path.join(base_dir, filename)
+    ]
+    for path in candidates:
+        full_p = os.path.abspath(path)
+        if os.path.exists(full_p):
+            return full_p
+    return os.path.abspath(os.path.join(base_dir, "..", "data", filename))
+
 def update_readme_metrics(readme_path="README.md"):
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    macro_path = os.path.join(base_dir, "data", "live_paper_portfolio_macro.json")
-    ultra_path = os.path.join(base_dir, "data", "live_paper_portfolio_ultra.json")
-    legacy_path = os.path.join(base_dir, "data", "live_paper_portfolio.json")
+    macro_path = get_portfolio_path("live_paper_portfolio_macro.json")
+    ultra_path = get_portfolio_path("live_paper_portfolio_ultra.json")
+    legacy_path = get_portfolio_path("live_paper_portfolio.json")
 
     macro_m = compute_profile_metrics(load_portfolio(macro_path))
     ultra_m = compute_profile_metrics(load_portfolio(ultra_path))
