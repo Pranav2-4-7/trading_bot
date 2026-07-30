@@ -1,15 +1,15 @@
 # 📊 TradingBOT Daily Market Performance Report
-> **Date:** `2026-07-30` | **Generated At:** `2026-07-30 13:14:02 IST`
+> **Date:** `2026-07-30` | **Generated At:** `2026-07-30 18:12:54 IST`
 
 ---
 ## 📌 Executive Summary
 
 ### 🚀 5-Year Macro Trend (0.57 Threshold)
 - **Initial Capital:** INR 100,000.00
-- **Cash Liquidity:** INR 17,259.64
-- **Holdings Value:** INR 85,258.37
-- **Total Portfolio Valuation:** **INR 102,518.01**
-- **Net Return:** **`+2.52%`**
+- **Cash Liquidity:** INR 7,445.51
+- **Holdings Value:** INR 95,029.50
+- **Total Portfolio Valuation:** **INR 102,475.02**
+- **Net Return:** **`+2.48%`**
 - **Today's Trades Closed:** `1` (Wins: `1` | Win Rate: `100.0%`)
 - **Today's Realized PnL:** **INR +1220.06**
 - **Lifetime Win Rate:** `100.0%` (2 total trades)
