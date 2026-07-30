@@ -7,7 +7,7 @@
 <!-- LIVE_METRICS_START -->
 ## 📈 Live Portfolio Performance Metrics
 
-> **Last Auto-Synced:** `2026-07-30 12:28:42 IST`
+> **Last Auto-Synced:** `2026-07-30 13:14:02 IST`
 
 | Strategy Profile | Initial Capital | Valuation | Cash Balance | Net Return | Win Rate | Open Positions | Closed Trades |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
