@@ -16,15 +16,15 @@ def get_portfolio_path(filename):
             return full_p
     return os.path.abspath(os.path.join(base_dir, "..", "data", filename))
 
-def generate_daily_report(output_dir="reports"):
+def generate_daily_report(output_dir="reports", date_str=None):
     base_dir = os.path.dirname(os.path.abspath(__file__))
     reports_dir = os.path.join(base_dir, output_dir)
 
     if not os.path.exists(reports_dir):
         os.makedirs(reports_dir)
 
-    today_date_str = datetime.datetime.now().strftime("%Y-%m-%d")
-    now_timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S IST")
+    today_date_str = date_str if date_str is not None else datetime.datetime.now().strftime("%Y-%m-%d")
+    now_timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " IST" if date_str is None else f"{date_str} 15:30:00 IST"
 
     profiles = [
         {"id": "macro", "name": "🚀 5-Year Macro Trend (0.57 Threshold)", "file": "live_paper_portfolio_macro.json"},
@@ -139,4 +139,17 @@ def generate_daily_report(output_dir="reports"):
     return report_file_path
 
 if __name__ == "__main__":
-    generate_daily_report()
+    import sys
+    target_date = sys.argv[1] if len(sys.argv) > 1 else None
+    
+    if target_date is None:
+        today = datetime.datetime.now()
+        # 5 is Saturday, 6 is Sunday
+        if today.weekday() == 5:
+            target_date = (today - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+            print(f"Weekend detected (Saturday). Defaulting report date to yesterday: {target_date}")
+        elif today.weekday() == 6:
+            target_date = (today - datetime.timedelta(days=2)).strftime("%Y-%m-%d")
+            print(f"Weekend detected (Sunday). Defaulting report date to Friday: {target_date}")
+            
+    generate_daily_report(date_str=target_date)
