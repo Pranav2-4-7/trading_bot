@@ -26,11 +26,18 @@ def generate_daily_report(output_dir="reports", date_str=None):
     today_date_str = date_str if date_str is not None else datetime.datetime.now().strftime("%Y-%m-%d")
     now_timestamp_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") + " IST" if date_str is None else f"{date_str} 15:30:00 IST"
 
-    profiles = [
-        {"id": "macro", "name": "🚀 5-Year Macro Trend (0.57 Threshold)", "file": "live_paper_portfolio_macro.json"},
-        {"id": "ultra", "name": "🎯 Ultra-High Conviction (0.68 Threshold)", "file": "live_paper_portfolio_ultra.json"},
-        {"id": "legacy", "name": "📜 Legacy Account", "file": "live_paper_portfolio.json"}
-    ]
+    # Load profiles from config.json
+    config_path = os.path.join(base_dir, "config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as conf_f:
+            config = json.load(conf_f)
+            profiles = config.get("profiles", [])
+    else:
+        profiles = [
+            {"id": "macro", "name": "🚀 5-Year Macro Trend (0.57 Threshold)", "file": "live_paper_portfolio_macro.json"},
+            {"id": "ultra", "name": "🎯 Ultra-High Conviction (0.68 Threshold)", "file": "live_paper_portfolio_ultra.json"},
+            {"id": "legacy", "name": "📜 Legacy Account", "file": "live_paper_portfolio.json"}
+        ]
 
     report_md = []
     report_md.append(f"# 📊 TradingBOT Daily Market Performance Report")
