@@ -54,7 +54,8 @@ def compute_profile_metrics(state):
         "closed_trades": total_closed
     }
 
-def get_portfolio_path(filename):
+def get_portfolio_path(filename: str) -> str:
+    """Finds absolute path of portfolio file among standard data directories."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.path.join(base_dir, "..", "data", filename),
@@ -67,7 +68,8 @@ def get_portfolio_path(filename):
             return full_p
     return os.path.abspath(os.path.join(base_dir, "..", "data", filename))
 
-def update_readme_metrics(readme_path="README.md"):
+def update_readme_metrics(readme_path: str = "README.md") -> None:
+    """Updates README markdown metrics placeholders with latest live portfolio values."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     macro_path = get_portfolio_path("live_paper_portfolio_macro.json")
     ultra_path = get_portfolio_path("live_paper_portfolio_ultra.json")
