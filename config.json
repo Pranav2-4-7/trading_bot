@@ -1,0 +1,34 @@
+{
+  "profiles": [
+    {
+      "id": "macro",
+      "name": "🚀 5-Year Macro Trend (0.57 Threshold)",
+      "file": "live_paper_portfolio_macro.json",
+      "threshold": 0.57
+    },
+    {
+      "id": "ultra",
+      "name": "🎯 Ultra-High Conviction (0.68 Threshold)",
+      "file": "live_paper_portfolio_ultra.json",
+      "threshold": 0.68
+    },
+    {
+      "id": "legacy",
+      "name": "📜 Legacy Account",
+      "file": "live_paper_portfolio.json",
+      "threshold": 0.57
+    }
+  ],
+  "tickers": [
+    "RELIANCE.NS",
+    "TCS.NS",
+    "INFY.NS",
+    "HDFCBANK.NS",
+    "ICICIBANK.NS",
+    "SBIN.NS",
+    "ITC.NS",
+    "LT.NS",
+    "BHARTIARTL.NS",
+    "WIPRO.NS"
+  ]
+}
