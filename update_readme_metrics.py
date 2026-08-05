@@ -71,35 +71,43 @@ def get_portfolio_path(filename: str) -> str:
 def update_readme_metrics(readme_path: str = "README.md") -> None:
     """Updates README markdown metrics placeholders with latest live portfolio values."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    macro_path = get_portfolio_path("live_paper_portfolio_macro.json")
-    ultra_path = get_portfolio_path("live_paper_portfolio_ultra.json")
-    legacy_path = get_portfolio_path("live_paper_portfolio.json")
+    
+    config_path = os.path.join(base_dir, "config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8") as conf_f:
+            config = json.load(conf_f)
+            profiles = config.get("profiles", [])
+    else:
+        profiles = [
+            {"id": "macro", "name": "🚀 5-Year Macro Trend (0.57 Threshold)", "file": "live_paper_portfolio_macro.json"},
+            {"id": "ultra", "name": "🎯 Ultra-High Conviction (0.68 Threshold)", "file": "live_paper_portfolio_ultra.json"},
+            {"id": "legacy", "name": "📜 Legacy Account", "file": "live_paper_portfolio.json"}
+        ]
 
-    macro_m = compute_profile_metrics(load_portfolio(macro_path))
-    ultra_m = compute_profile_metrics(load_portfolio(ultra_path))
-    legacy_m = compute_profile_metrics(load_portfolio(legacy_path))
+    rows = []
+    for p in profiles:
+        p_path = get_portfolio_path(p["file"])
+        m = compute_profile_metrics(load_portfolio(p_path))
+        def fmt_ret(ret):
+            if ret > 0:
+                return f"**`+{ret:.2f}%`** 🟢"
+            elif ret < 0:
+                return f"**`{ret:.2f}%`** 🔴"
+            else:
+                return f"**`+0.00%`** ⚪"
+        rows.append(f"| **{p['name']}** | INR {m['initial_capital']:,.2f} | **INR {m['valuation']:,.2f}** | INR {m['cash']:,.2f} | {fmt_ret(m['net_return'])} | **`{m['win_rate']:.1f}%`** | {m['open_positions']} | {m['closed_trades']} |")
 
     now_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S IST')
 
-    def fmt_ret(ret):
-        if ret > 0:
-            return f"**`+{ret:.2f}%`** 🟢"
-        elif ret < 0:
-            return f"**`{ret:.2f}%`** 🔴"
-        else:
-            return f"**`+0.00%`** ⚪"
-
-    metrics_table = f"""<!-- LIVE_METRICS_START -->
+    table_header = f"""<!-- LIVE_METRICS_START -->
 ## 📈 Live Portfolio Performance Metrics
 
 > **Last Auto-Synced:** `{now_str}`
 
 | Strategy Profile | Initial Capital | Valuation | Cash Balance | Net Return | Win Rate | Open Positions | Closed Trades |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **🚀 5-Year Macro Trend (0.57 Threshold)** | INR {macro_m['initial_capital']:,.2f} | **INR {macro_m['valuation']:,.2f}** | INR {macro_m['cash']:,.2f} | {fmt_ret(macro_m['net_return'])} | **`{macro_m['win_rate']:.1f}%`** | {macro_m['open_positions']} | {macro_m['closed_trades']} |
-| **🎯 Ultra-High Conviction (0.68 Threshold)** | INR {ultra_m['initial_capital']:,.2f} | **INR {ultra_m['valuation']:,.2f}** | INR {ultra_m['cash']:,.2f} | {fmt_ret(ultra_m['net_return'])} | **`{ultra_m['win_rate']:.1f}%`** | {ultra_m['open_positions']} | {ultra_m['closed_trades']} |
-| **📜 Legacy Account** | INR {legacy_m['initial_capital']:,.2f} | **INR {legacy_m['valuation']:,.2f}** | INR {legacy_m['cash']:,.2f} | {fmt_ret(legacy_m['net_return'])} | **`{legacy_m['win_rate']:.1f}%`** | {legacy_m['open_positions']} | {legacy_m['closed_trades']} |
-<!-- LIVE_METRICS_END -->"""
+"""
+    metrics_table = table_header + "\n".join(rows) + "\n<!-- LIVE_METRICS_END -->"
 
     full_readme_path = os.path.abspath(os.path.join(base_dir, readme_path))
     if not os.path.exists(full_readme_path):
