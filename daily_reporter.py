@@ -3,7 +3,7 @@ import json
 import datetime
 from update_readme_metrics import update_readme_metrics
 
-def get_portfolio_path(filename):
+def get_portfolio_path(filename: str) -> str:
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.path.join(base_dir, "..", "data", filename),
