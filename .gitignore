@@ -4,3 +4,9 @@ data/
 *.log
 .pytest_cache/
 .env
+mlruns/
+mlflow.db
+*.tmp
+.ipynb_checkpoints/
+.vs/
+.idea/
