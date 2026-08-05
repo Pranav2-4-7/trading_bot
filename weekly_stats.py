@@ -2,7 +2,8 @@ import os
 import json
 import datetime
 
-def load_portfolio(filepath):
+def load_portfolio(filepath: str) -> dict:
+    """Safely reads portfolio state from a local JSON file path."""
     if not os.path.exists(filepath):
         return None
     try:
@@ -12,7 +13,8 @@ def load_portfolio(filepath):
         print(f"Error loading {filepath}: {e}")
         return None
 
-def get_portfolio_path(filename):
+def get_portfolio_path(filename: str) -> str:
+    """Finds absolute path of portfolio file among data directories."""
     base_dir = os.path.dirname(os.path.abspath(__file__))
     candidates = [
         os.path.join(base_dir, "..", "data", filename),
@@ -25,7 +27,7 @@ def get_portfolio_path(filename):
             return full_p
     return os.path.abspath(os.path.join(base_dir, "..", "data", filename))
 
-def calculate_weekly_metrics(state):
+def calculate_weekly_metrics(state: dict) -> dict:
     if not state:
         return None
 
