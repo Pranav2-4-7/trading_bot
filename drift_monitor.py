@@ -1,10 +1,15 @@
 import os
 import pandas as pd
 
-# Evidently AI imports
-from evidently import ColumnMapping
-from evidently.report import Report
-from evidently.metric_preset import DataDriftPreset
+# Evidently AI imports with version-agnostic fallback
+try:
+    from evidently import ColumnMapping
+    from evidently.report import Report
+    from evidently.metric_preset import DataDriftPreset
+except ImportError:
+    from evidently.legacy.pipeline.column_mapping import ColumnMapping
+    from evidently.legacy.report import Report
+    from evidently.legacy.metric_preset import DataDriftPreset
 
 NUMERICAL_FEATURES = [
     "Close", "Volume", "MA50", "MA200", "RSI14", "Volume_Ratio",
