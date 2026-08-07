@@ -1,20 +1,23 @@
 # 📊 TradingBOT Daily Market Performance Report
-> **Date:** `2026-08-07` | **Generated At:** `2026-08-07 13:02:59 IST`
+> **Date:** `2026-08-07` | **Generated At:** `2026-08-07 16:44:08 IST`
 
 ---
 ## 📌 Executive Summary
 
 ### 🚀 5-Year Macro Trend (0.57 Threshold)
 - **Initial Capital:** INR 100,000.00
-- **Cash Liquidity:** INR 7,445.51
-- **Holdings Value:** INR 95,029.50
-- **Total Portfolio Valuation:** **INR 102,475.02**
-- **Net Return:** **`+2.48%`**
-- **Today's Trades Closed:** `0` (Wins: `0` | Win Rate: `0.0%`)
-- **Today's Realized PnL:** **INR +0.00**
-- **Lifetime Win Rate:** `100.0%` (2 total trades)
+- **Cash Liquidity:** INR 8,404.52
+- **Holdings Value:** INR 95,021.68
+- **Total Portfolio Valuation:** **INR 103,426.20**
+- **Net Return:** **`+3.43%`**
+- **Today's Trades Closed:** `1` (Wins: `1` | Win Rate: `100.0%`)
+- **Today's Realized PnL:** **INR +973.67**
+- **Lifetime Win Rate:** `100.0%` (3 total trades)
 
-*No closed trades for this profile today.*
+#### 📑 Today's Executed Trades Ledger
+| Ticker | Entry Date | Exit Date | Fill Price | Exit Price | Slippage (INR) | Realized PnL | Exit Reason |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **SBIN.NS** | 2026-07-21 15:16:12 | 2026-08-07 13:46:38 | INR 1097.08 | INR 1097.08 | INR 0.22 | **INR +973.67** | Take-Profit Breached |
 
 ### 🎯 Ultra-High Conviction (0.68 Threshold)
 - **Initial Capital:** INR 100,000.00
