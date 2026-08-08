@@ -386,10 +386,15 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                     is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=2)
                     print(f"  [DEBUG BUY] cooldown={is_cooldown}")
                     if not is_cooldown:
-                        allocation = risk.calculate_buy_allocation(
-                            execution.initial_capital, execution.current_cash
+                        total_port_val = execution.get_portfolio_value(current_prices)
+                        allocation = risk.calculate_kelly_allocation(
+                            confidence,
+                            tp_pct=risk.take_profit_pct,
+                            sl_pct=risk.trailing_stop_loss_pct,
+                            total_portfolio_value=total_port_val,
+                            available_cash=execution.current_cash
                         )
-                        print(f"  [DEBUG BUY] allocation={allocation} | current_cash={execution.current_cash}")
+                        print(f"  [DEBUG BUY] allocation={allocation:.2f} | current_cash={execution.current_cash:.2f}")
                         if allocation > 0:
                             t_row = features_df
                             atr_val = float(t_row["ATR"].iloc[-1]) if ("ATR" in t_row.columns and not pd.isna(t_row["ATR"].iloc[-1])) else (0.015 * current_price)
