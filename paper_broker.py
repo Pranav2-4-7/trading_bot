@@ -142,6 +142,13 @@ class ExecutionAgent:
                 return True
         return False
 
+    def place_buy_order(self, ticker, date, current_price, allocation, current_prices, risk_agent, atr_14=None, avg_volume_20=None, bid_ask_spread=None, kelly_fraction=None, confidence_score=None):
+        """Attempts to execute a buy order, invoking capital recycling if funds are insufficient for a high-conviction signal."""
+        if self.current_cash < allocation and confidence_score is not None:
+            risk_agent.rebalance_for_high_conviction(self, allocation, confidence_score, current_prices, date)
+            
+        return self.buy_asset(ticker, date, current_price, allocation, atr_14, avg_volume_20, bid_ask_spread, kelly_fraction, confidence_score)
+
     def sell_asset(self, ticker, date, current_price, reason="Model Signal", atr_14=None, avg_volume_20=None, bid_ask_spread=None):
         """Simulates selling an asset using dynamic slippage, adding cash, and writing to ledger."""
         if ticker not in self.active_positions:
@@ -252,6 +259,57 @@ class RiskAgent:
         target_inr = total_portfolio_value * f_kelly
         return min(target_inr, available_cash)
 
+    def rebalance_for_high_conviction(self, execution_agent, required_inr, incoming_confidence, current_prices, date):
+        """Forcefully sells lowest confidence/return positions to free up cash for high-conviction signals."""
+        if incoming_confidence < 0.68:
+            return execution_agent.current_cash
+            
+        if execution_agent.current_cash >= required_inr:
+            return execution_agent.current_cash
+
+        active_positions = execution_agent.active_positions
+        if not active_positions:
+            return execution_agent.current_cash
+
+        weakest_ticker = None
+        weakest_confidence = 1.0
+        weakest_return_pct = float('inf')
+
+        for ticker, pos in active_positions.items():
+            conf = pos.get("confidence_score")
+            if conf is None:
+                conf = 0.57
+                
+            entry_price = pos["entry_price"]
+            curr_price = current_prices.get(ticker, entry_price)
+            return_pct = (curr_price - entry_price) / entry_price
+            
+            if conf < weakest_confidence:
+                weakest_confidence = conf
+                weakest_return_pct = return_pct
+                weakest_ticker = ticker
+            elif abs(conf - weakest_confidence) < 1e-5:
+                if return_pct < weakest_return_pct:
+                    weakest_confidence = conf
+                    weakest_return_pct = return_pct
+                    weakest_ticker = ticker
+
+        if weakest_ticker is not None:
+            if incoming_confidence >= weakest_confidence + 0.10:
+                print(f"[{date}] [REBALANCING] Incoming signal confidence ({incoming_confidence:.1%}) is at least 10% higher than weakest position {weakest_ticker} confidence ({weakest_confidence:.1%}). Force closing {weakest_ticker} to recycle capital.")
+                current_price = current_prices.get(weakest_ticker)
+                if current_price is not None:
+                    execution_agent.sell_asset(
+                        weakest_ticker, 
+                        date, 
+                        current_price, 
+                        reason="Capital Recycling (Recycled for High Conviction)"
+                    )
+                else:
+                    print(f"Warning: Cannot sell {weakest_ticker} because current price is missing.")
+                    
+        return execution_agent.current_cash
+
 
 def run_paper_trading_simulation(initial_capital=100000.0, signals_file="data/generated_signals.csv"):
     """Simulates a paper trading environment using historical model predictions."""
@@ -324,7 +382,16 @@ def run_paper_trading_simulation(initial_capital=100000.0, signals_file="data/ge
                         available_cash=execution_agent.current_cash
                     )
                     if allocation > 0:
-                        execution_agent.buy_asset(ticker, date, current_price, allocation)
+                        execution_agent.place_buy_order(
+                            ticker, 
+                            date, 
+                            current_price, 
+                            allocation,
+                            current_prices=current_prices,
+                            risk_agent=risk_agent,
+                            kelly_fraction=None,
+                            confidence_score=confidence
+                        )
 
             # CASE B: Hold/Sell signal from model & currently holding position
             elif signal == 0 and ticker in execution_agent.active_positions:
