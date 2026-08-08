@@ -76,13 +76,14 @@ class ExecutionAgent:
         print(f"Portfolio state loaded from {filepath}")
 
     def buy_asset(self, ticker, date, current_price, allocation, atr_14=None, avg_volume_20=None, bid_ask_spread=None):
-        """Simulates buying an asset using dynamic slippage, deducting cash, and recording position."""
+        """Simulates buying an asset using dynamic slippage, deducting cash, and recording position metadata."""
         if self.current_cash < allocation:
             return False
 
         # Estimate order quantity for dynamic slippage calculation
         approx_shares = max(int(allocation // current_price), 1)
         total_slippage = self.calculate_dynamic_slippage(current_price, approx_shares, atr_14, avg_volume_20, bid_ask_spread)
+        slippage_pct = (total_slippage / current_price) if current_price > 0 else 0.0
 
         # Buy Price = Current Price + Total Slippage
         execution_price = current_price + total_slippage
@@ -90,6 +91,7 @@ class ExecutionAgent:
 
         if shares_to_buy > 0:
             total_cost = shares_to_buy * execution_price
+            total_slippage_cost = total_slippage * shares_to_buy
             transaction_fees = total_cost * self.BROKERAGE_AND_TAXES_PCT
             total_deduction = total_cost + transaction_fees
 
@@ -105,6 +107,10 @@ class ExecutionAgent:
                     
                     self.active_positions[ticker] = {
                         "entry_price": average_price,
+                        "fill_price": execution_price,
+                        "slippage_inr": total_slippage,
+                        "slippage_pct": slippage_pct,
+                        "total_slippage_cost": total_slippage_cost,
                         "shares": total_shares,
                         "entry_date": pos.get("entry_date", date),
                         "last_buy_date": date,
@@ -112,18 +118,22 @@ class ExecutionAgent:
                         "peak_price": average_price
                     }
                     print(
-                        f"[{date}] AVG-DOWN | {ticker:=<11} | Added {shares_to_buy} Shares @ INR {execution_price:.2f} (Slippage: INR {total_slippage:.2f}) | New Avg Price: INR {average_price:.2f}"
+                        f"[{date}] AVG-DOWN | {ticker:=<11} | Added {shares_to_buy} Shares @ Fill: INR {execution_price:.2f} | Slippage: INR {total_slippage:.2f} ({slippage_pct:.4%}) | Total Slippage Cost: INR {total_slippage_cost:.2f} | New Avg Price: INR {average_price:.2f}"
                     )
                 else:
                     self.active_positions[ticker] = {
                         "entry_price": execution_price,
+                        "fill_price": execution_price,
+                        "slippage_inr": total_slippage,
+                        "slippage_pct": slippage_pct,
+                        "total_slippage_cost": total_slippage_cost,
                         "shares": shares_to_buy,
                         "entry_date": date,
                         "buy_count": 1,
                         "peak_price": execution_price
                     }
                     print(
-                        f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ INR {execution_price:.2f} (Slippage: INR {total_slippage:.2f}) | Fees: INR {transaction_fees:.2f}"
+                        f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ Fill: INR {execution_price:.2f} | Slippage: INR {total_slippage:.2f} ({slippage_pct:.4%}) | Total Slippage Cost: INR {total_slippage_cost:.2f} | Fees: INR {transaction_fees:.2f}"
                     )
                 return True
         return False
@@ -137,6 +147,8 @@ class ExecutionAgent:
         shares_to_sell = position["shares"]
 
         total_slippage = self.calculate_dynamic_slippage(current_price, shares_to_sell, atr_14, avg_volume_20, bid_ask_spread)
+        slippage_pct = (total_slippage / current_price) if current_price > 0 else 0.0
+        total_slippage_cost = total_slippage * shares_to_sell
 
         # Sell Price = Current Price - Total Slippage
         execution_price = current_price - total_slippage
@@ -148,7 +160,7 @@ class ExecutionAgent:
         self.current_cash += net_revenue
 
         print(
-            f"[{date}] SELL | {ticker:=<11} | {shares_to_sell} Shares @ INR {execution_price:.2f} (Slippage: INR {total_slippage:.2f}) | PnL: INR {profit_loss:+.2f} ({reason})"
+            f"[{date}] SELL | {ticker:=<11} | {shares_to_sell} Shares @ Fill: INR {execution_price:.2f} | Slippage: INR {total_slippage:.2f} ({slippage_pct:.4%}) | Total Slippage Cost: INR {total_slippage_cost:.2f} | PnL: INR {profit_loss:+.2f} ({reason})"
         )
 
         self.trade_log.append({
@@ -157,6 +169,10 @@ class ExecutionAgent:
             "Exit_Date": date,
             "Entry_Price": position["entry_price"],
             "Exit_Price": execution_price,
+            "Fill_Price": execution_price,
+            "Slippage_INR": total_slippage,
+            "Slippage_Pct": slippage_pct,
+            "Total_Slippage_Cost": total_slippage_cost,
             "Profit_Loss": profit_loss,
             "Exit_Reason": reason
         })
@@ -211,6 +227,26 @@ class RiskAgent:
         if current_cash >= allocation:
             return allocation
         return 0.0
+
+    def calculate_kelly_allocation(self, confidence, tp_pct, sl_pct, total_portfolio_value, available_cash):
+        """Calculates dynamic capital allocation using the Half-Kelly Criterion.
+        
+        Args:
+            confidence (float): Probability prediction score from model [0.0, 1.0].
+            tp_pct (float): Take-profit threshold percent (e.g. 0.05 for 5%).
+            sl_pct (float): Stop-loss threshold percent (e.g. 0.02 for 2%).
+            total_portfolio_value (float): Current net asset value of the portfolio.
+            available_cash (float): Liquid cash balance in the account.
+            
+        Returns:
+            float: Sized allocation amount in INR.
+        """
+        b = tp_pct / max(sl_pct, 0.001)
+        f = confidence - (1.0 - confidence) / b
+        f_kelly = 0.5 * f
+        f_kelly = max(0.02, min(f_kelly, 0.20))
+        target_inr = total_portfolio_value * f_kelly
+        return min(target_inr, available_cash)
 
 
 def run_paper_trading_simulation(initial_capital=100000.0, signals_file="data/generated_signals.csv"):
@@ -275,8 +311,13 @@ def run_paper_trading_simulation(initial_capital=100000.0, signals_file="data/ge
             # CASE A: Buy signal from model & confidence >= 0.70 & not already holding position
             if signal == 1 and confidence >= 0.70 and ticker not in execution_agent.active_positions:
                 if not execution_agent.is_in_cooldown(ticker, date, cooldown_days=10):
-                    allocation = risk_agent.calculate_buy_allocation(
-                        initial_capital, execution_agent.current_cash
+                    total_port_val = execution_agent.get_portfolio_value(current_prices)
+                    allocation = risk_agent.calculate_kelly_allocation(
+                        confidence,
+                        tp_pct=risk_agent.take_profit_pct,
+                        sl_pct=risk_agent.trailing_stop_loss_pct,
+                        total_portfolio_value=total_port_val,
+                        available_cash=execution_agent.current_cash
                     )
                     if allocation > 0:
                         execution_agent.buy_asset(ticker, date, current_price, allocation)
