@@ -75,7 +75,7 @@ class ExecutionAgent:
         self.trade_log = state.get("trade_log", [])
         print(f"Portfolio state loaded from {filepath}")
 
-    def buy_asset(self, ticker, date, current_price, allocation, atr_14=None, avg_volume_20=None, bid_ask_spread=None):
+    def buy_asset(self, ticker, date, current_price, allocation, atr_14=None, avg_volume_20=None, bid_ask_spread=None, kelly_fraction=None, confidence_score=None):
         """Simulates buying an asset using dynamic slippage, deducting cash, and recording position metadata."""
         if self.current_cash < allocation:
             return False
@@ -115,7 +115,9 @@ class ExecutionAgent:
                         "entry_date": pos.get("entry_date", date),
                         "last_buy_date": date,
                         "buy_count": pos.get("buy_count", 1) + 1,
-                        "peak_price": average_price
+                        "peak_price": average_price,
+                        "kelly_fraction": kelly_fraction if kelly_fraction is not None else pos.get("kelly_fraction"),
+                        "confidence_score": confidence_score if confidence_score is not None else pos.get("confidence_score")
                     }
                     print(
                         f"[{date}] AVG-DOWN | {ticker:=<11} | Added {shares_to_buy} Shares @ Fill: INR {execution_price:.2f} | Slippage: INR {total_slippage:.2f} ({slippage_pct:.4%}) | Total Slippage Cost: INR {total_slippage_cost:.2f} | New Avg Price: INR {average_price:.2f}"
@@ -130,7 +132,9 @@ class ExecutionAgent:
                         "shares": shares_to_buy,
                         "entry_date": date,
                         "buy_count": 1,
-                        "peak_price": execution_price
+                        "peak_price": execution_price,
+                        "kelly_fraction": kelly_fraction,
+                        "confidence_score": confidence_score
                     }
                     print(
                         f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ Fill: INR {execution_price:.2f} | Slippage: INR {total_slippage:.2f} ({slippage_pct:.4%}) | Total Slippage Cost: INR {total_slippage_cost:.2f} | Fees: INR {transaction_fees:.2f}"
