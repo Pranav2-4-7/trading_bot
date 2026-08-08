@@ -387,6 +387,11 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                     print(f"  [DEBUG BUY] cooldown={is_cooldown}")
                     if not is_cooldown:
                         total_port_val = execution.get_portfolio_value(current_prices)
+                        
+                        b = risk.take_profit_pct / max(risk.trailing_stop_loss_pct, 0.001)
+                        f = confidence - (1.0 - confidence) / b
+                        f_kelly = max(0.02, min(0.5 * f, 0.20))
+                        
                         allocation = risk.calculate_kelly_allocation(
                             confidence,
                             tp_pct=risk.take_profit_pct,
@@ -394,12 +399,21 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                             total_portfolio_value=total_port_val,
                             available_cash=execution.current_cash
                         )
-                        print(f"  [DEBUG BUY] allocation={allocation:.2f} | current_cash={execution.current_cash:.2f}")
+                        print(f"  [KELLY SIZING] Confidence: {confidence:.1%} | Kelly Fraction: {f_kelly:.1%} | Target Allocation: INR {allocation:,.2f}")
                         if allocation > 0:
                             t_row = features_df
                             atr_val = float(t_row["ATR"].iloc[-1]) if ("ATR" in t_row.columns and not pd.isna(t_row["ATR"].iloc[-1])) else (0.015 * current_price)
                             vol_val = float(t_row["Volume_20SMA"].iloc[-1]) if ("Volume_20SMA" in t_row.columns and not pd.isna(t_row["Volume_20SMA"].iloc[-1])) else 1000000.0
-                            execution.buy_asset(ticker, today_str, current_price, allocation, atr_14=atr_val, avg_volume_20=vol_val)
+                            execution.buy_asset(
+                                ticker, 
+                                today_str, 
+                                current_price, 
+                                allocation, 
+                                atr_14=atr_val, 
+                                avg_volume_20=vol_val,
+                                kelly_fraction=f_kelly,
+                                confidence_score=confidence
+                            )
                     else:
                         print(f"  Buy signal ignored: {ticker} is in cooldown block.")
 
