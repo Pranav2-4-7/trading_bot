@@ -55,8 +55,8 @@ graph TD
    * **Ultra High-Precision Brain (`UltraStrategyAgent`):** Inherits from `StrategyAgent`, trained specifically on `Target_Ultra` (>= +0.60% upside) using regularized parameters (`min_child_weight=3`, `colsample_bytree=0.8`, `subsample=0.8`) with a `0.68` confidence threshold.
 
 3. **`paper_broker.py` (`ExecutionAgent` & `RiskAgent`)**
-   * **`RiskAgent`:** Enforces stop-loss, trailing stop-loss, take-profit, position allocation limits (10% max capital per trade), and 2-day trade cooldowns.
-   * **`ExecutionAgent`:** Simulates order execution with realistic slippage (0.05%) and brokerage fees/taxes (0.12%). Manages averaging-down rules (max 2 buys per stock on >= 0.3% price drop).
+   * **`RiskAgent`:** Enforces stop-loss, trailing stop-loss, and take-profit thresholds. Dynamically sizes positions using a **Half-Kelly Criterion Sizing Engine** and recycles funds using an automated **Portfolio Pruning & Capital Recycling Engine**.
+   * **`ExecutionAgent`:** Simulates order execution with realistic dynamic slippage (liquidity/volatility-based) and brokerage fees/taxes (0.12%). Manages averaging-down rules (max 2 buys per stock on >= 0.3% price drop) and provides a wrapper `place_buy_order` to invoke capital recycling before rejecting a trade.
 
 4. **`live_paper_runner.py`**
    * Main agent loop executing live market scans.
@@ -84,7 +84,8 @@ The system runs **3 concurrent paper trading profiles** simultaneously:
 | **Take Profit (TP)** | `5.0%` | `5.0%` | **`4.0%` (Quicker Lock-in)** |
 | **Trend Filter** | Daily 50 SMA | Daily 50 SMA | **Daily 50 SMA** |
 | **Intraday Dip Filter** | `RSI < 65` | `RSI < 65` | **`RSI < 58` (Pullback Entries Only)** |
-| **Position Allocation** | Max 10% Cash | Max 10% Cash | **Max 10% Cash** |
+| **Position Sizing** | Dynamic Half-Kelly Sizing | Dynamic Half-Kelly Sizing | **Dynamic Half-Kelly Sizing** |
+| **Capital Recycling** | N/A (Not Ultra) | N/A (Not Ultra) | **Automated Portfolio Pruning (>=10% delta)** |
 
 ---
 
@@ -136,6 +137,21 @@ TradingBOT/
 └── README.md                        # Documentation & AI Improvement Guide
 ```
 
+## 💸 Capital Management & Risk Mechanics (New)
+
+The bot utilizes a dynamic, probability-driven money management suite inside `RiskAgent` to optimize capital efficiency:
+
+1. **Half-Kelly Sizing Engine (`calculate_kelly_allocation`):**
+   * Computes payout ratio $b = \text{tp\_pct} / \text{sl\_pct}$.
+   * Calculates the full Kelly fraction: $f = p - \frac{1 - p}{b}$ where $p$ is the model's confidence probability.
+   * Leverages a conservative **Half-Kelly** sizing scale ($0.5 \times f$) to avoid over-leveraging.
+   * Enforces a **2% allocation floor** (to ensure minimal entry sizes) and a **20% allocation ceiling** (to limit exposure per position).
+
+2. **Automated Portfolio Pruning & Capital Recycling (`rebalance_for_high_conviction`):**
+   * If a high-conviction buy signal is received (confidence $\ge 68\%$, Ultra Strategy) but the account lacks liquid cash to fund it, the bot will scan currently open positions.
+   * It identifies the weakest open holding (lowest confidence entry score; ties broken by lowest unrealized return).
+   * If the new incoming signal's confidence is **at least 10% higher** than the weakest open position's confidence, the weak position is forcefully sold immediately to recycle the capital.
+
 ---
 
 ## ⚙️ Installation & Running Locally
@@ -173,13 +189,11 @@ Open **[http://127.0.0.1:5000/](http://127.0.0.1:5000/)** in your web browser.
 
 *If you are providing this repository to an AI agent or LLM to improve the codebase, here are the recommended areas of enhancement:*
 
-1. **Portfolio Optimization (Markowitz / Sharpe Maximization):**
-   * Currently, allocation is fixed at 10% per trade. Implement dynamic Mean-Variance Optimization or Kelly Criterion for optimal capital allocation.
-2. **Deep Learning Sequence Models (LSTM / Transformer / Temporal Fusion Transformer):**
+1. **Deep Learning Sequence Models (LSTM / Transformer / Temporal Fusion Transformer):**
    * Replace/augment XGBoost with an LSTM or Transformer model capable of capturing long-term temporal dependencies across multiple candle lookbacks.
-3. **Reinforcement Learning Execution (PPO / Deep Q-Learning):**
+2. **Reinforcement Learning Execution (PPO / Deep Q-Learning):**
    * Train a Proximal Policy Optimization (PPO) agent that learns adaptive exit strategies (dynamic SL/TP) based on real-time volatility.
-4. **Order Book Microstructure & Level-2 Quote Integration:**
+3. **Order Book Microstructure & Level-2 Quote Integration:**
    * Incorporate bid-ask spread depth, order flow imbalance, and volume delta to optimize intraday execution timing.
-5. **FinBERT / LLM Multi-Modal Sentiment Parsing:**
+4. **FinBERT / LLM Multi-Modal Sentiment Parsing:**
    * Upgrade the basic RSS headline sentiment matching to a fine-tuned FinBERT embeddings pipeline to classify financial news context dynamically.
