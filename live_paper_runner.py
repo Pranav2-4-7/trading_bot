@@ -15,6 +15,26 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from data_scraper import IngestionAgent
 from model import StrategyAgent
 from paper_broker import ExecutionAgent, RiskAgent
+from news_ingestor import GlobalNewsIngestor
+from sentiment_analyzer import FinBERTSentimentAnalyzer
+
+# Instantiate globally
+news_ingestor = GlobalNewsIngestor()
+sentiment_analyzer = FinBERTSentimentAnalyzer()
+
+# Company mapping dictionary
+COMPANY_NAME_MAP = {
+    "RELIANCE.NS": "Reliance Industries",
+    "TCS.NS": "Tata Consultancy Services",
+    "INFY.NS": "Infosys",
+    "HDFCBANK.NS": "HDFC Bank",
+    "ICICIBANK.NS": "ICICI Bank",
+    "SBIN.NS": "State Bank of India",
+    "ITC.NS": "ITC",
+    "LT.NS": "Larsen & Toubro",
+    "BHARTIARTL.NS": "Bharti Airtel",
+    "WIPRO.NS": "Wipro"
+}
 
 # Global cache to persist historical dataframes and avoid yfinance rate-limiting
 LIVE_DATA_CACHE = {}
@@ -291,6 +311,18 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
 
             tech_row["Net_Profit_Margin"] = net_profit_margin
             tech_row["Debt_to_Equity"] = debt_to_equity
+
+            # Fetch global sentiment using GDELT and FinBERT
+            global_sentiment = 0.0
+            try:
+                company_name = COMPANY_NAME_MAP.get(ticker, ticker.split(".")[0])
+                headlines = news_ingestor.fetch_recent_news(company_name, days_back=1)
+                if headlines:
+                    global_sentiment = sentiment_analyzer.score_headlines(headlines)
+            except Exception as e:
+                print(f"  [Sentiment Error] Failed to calculate GDELT/FinBERT sentiment for {ticker}: {e}")
+                
+            tech_row["Global_Sentiment_Score"] = global_sentiment
 
             # Format Date column back to string format for StrategyAgent
             tech_row["Date"] = pd.to_datetime(tech_row["Date"]).dt.strftime('%Y-%m-%d %H:%M:%S')
