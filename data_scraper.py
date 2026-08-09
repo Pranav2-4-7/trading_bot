@@ -6,6 +6,26 @@ import yfinance as yf
 import numpy as np
 
 from drift_monitor import evaluate_market_drift
+from news_ingestor import GlobalNewsIngestor
+from sentiment_analyzer import FinBERTSentimentAnalyzer
+
+# Instantiate globally
+news_ingestor = GlobalNewsIngestor()
+sentiment_analyzer = FinBERTSentimentAnalyzer()
+
+# Company mapping dictionary
+COMPANY_NAME_MAP = {
+    "RELIANCE.NS": "Reliance Industries",
+    "TCS.NS": "Tata Consultancy Services",
+    "INFY.NS": "Infosys",
+    "HDFCBANK.NS": "HDFC Bank",
+    "ICICIBANK.NS": "ICICI Bank",
+    "SBIN.NS": "State Bank of India",
+    "ITC.NS": "ITC",
+    "LT.NS": "Larsen & Toubro",
+    "BHARTIARTL.NS": "Bharti Airtel",
+    "WIPRO.NS": "Wipro"
+}
 
 class IngestionAgent:
     """Agent responsible for fetching and preparing price and fundamental data."""
@@ -108,6 +128,7 @@ class IngestionAgent:
         df["Target_Ultra"] = (future_return >= 0.0060).astype(int)
 
         # Drop rows where indicators or target couldn't be calculated (edges of data)
+        df["Global_Sentiment_Score"] = 0.0
         df = df.dropna(subset=["MA200", "RSI14", "ATR", "ROC_10"])
 
         # Save feature-engineered data
