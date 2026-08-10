@@ -1,6 +1,7 @@
 import os
 import json
 import datetime
+from dotenv import load_dotenv
 from update_readme_metrics import update_readme_metrics
 
 def get_portfolio_path(filename: str) -> str:
@@ -16,7 +17,77 @@ def get_portfolio_path(filename: str) -> str:
             return full_p
     return os.path.abspath(os.path.join(base_dir, "..", "data", filename))
 
+def generate_daily_gemini_bias():
+    """Fetches recent global news via GDELT for Nifty 50 tickers, queries Gemini 2.5 Flash, and saves the bias scores."""
+    from news_ingestor import GlobalNewsIngestor
+    from gemini_analyzer import GeminiSentimentAnalyzer
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    load_dotenv(os.path.join(base_dir, ".env"))
+
+    # If GEMINI_API_KEY is not set, default all daily biases to 0.0
+    if not os.environ.get("GEMINI_API_KEY"):
+        print("[Gemini warning] GEMINI_API_KEY environment variable not set. Defaulting all daily biases to 0.0.")
+        default_bias = {t: 0.0 for t in [
+            "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+            "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+            "BHARTIARTL.NS", "WIPRO.NS"
+        ]}
+        bias_file = os.path.join(base_dir, "..", "data", "daily_gemini_bias.json")
+        with open(bias_file, "w") as f:
+            json.dump(default_bias, f, indent=4)
+        return
+
+    print("Generating Daily Gemini Sentiment Bias Scores...")
+    ingestor = GlobalNewsIngestor()
+    analyzer = GeminiSentimentAnalyzer()
+
+    tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
+        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
+        "BHARTIARTL.NS", "WIPRO.NS"
+    ]
+    
+    company_map = {
+        "RELIANCE.NS": "Reliance Industries",
+        "TCS.NS": "Tata Consultancy Services",
+        "INFY.NS": "Infosys",
+        "HDFCBANK.NS": "HDFC Bank",
+        "ICICIBANK.NS": "ICICI Bank",
+        "SBIN.NS": "State Bank of India",
+        "ITC.NS": "ITC",
+        "LT.NS": "Larsen & Toubro",
+        "BHARTIARTL.NS": "Bharti Airtel",
+        "WIPRO.NS": "Wipro"
+    }
+
+    bias_scores = {}
+    for ticker in tickers:
+        company_name = company_map[ticker]
+        print(f"  Fetching 24h headlines for {company_name}...")
+        headlines = ingestor.fetch_recent_news(company_name, days_back=1)
+        if headlines:
+            print(f"  Querying Gemini 2.5 Flash for {company_name} (found {len(headlines)} headlines)...")
+            score = analyzer.fetch_daily_bias(company_name, headlines)
+            bias_scores[ticker] = score
+            print(f"    -> Sentiment Bias: {score:+.2f}")
+        else:
+            print(f"    -> No headlines found. Defaulting to 0.0")
+            bias_scores[ticker] = 0.0
+
+    # Ensure output dir exists
+    data_dir = os.path.join(base_dir, "..", "data")
+    if not os.path.exists(data_dir):
+        os.makedirs(data_dir)
+        
+    bias_file = os.path.join(data_dir, "daily_gemini_bias.json")
+    with open(bias_file, "w") as f:
+        json.dump(bias_scores, f, indent=4)
+        
+    print(f"Daily Gemini sentiment bias scores saved to {bias_file}")
+
 def generate_daily_report(output_dir="reports", date_str=None):
+    generate_daily_gemini_bias()
     base_dir = os.path.dirname(os.path.abspath(__file__))
     reports_dir = os.path.join(base_dir, output_dir)
 
