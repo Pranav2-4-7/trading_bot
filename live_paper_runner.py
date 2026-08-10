@@ -165,6 +165,17 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
     execution = ExecutionAgent(initial_capital=100000.0)
     execution.load_state(portfolio_file)
 
+    # Load daily Gemini sentiment bias scores
+    daily_gemini_bias = {}
+    bias_file = os.path.abspath(os.path.join(base_dir, "..", "data", "daily_gemini_bias.json"))
+    if os.path.exists(bias_file):
+        try:
+            with open(bias_file, "r") as bf:
+                daily_gemini_bias = json.load(bf)
+            print(f"Loaded daily Gemini sentiment bias scores from {bias_file}")
+        except Exception as e:
+            print(f"Error loading daily Gemini sentiment bias: {e}")
+
     if profile_id == "ultra":
         target_buy_threshold = 0.68
         risk = RiskAgent(stop_loss_pct=0.03, take_profit_pct=0.04, max_allocation_pct=0.10, trailing_stop_loss_pct=0.03)
@@ -317,8 +328,14 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             try:
                 company_name = COMPANY_NAME_MAP.get(ticker, ticker.split(".")[0])
                 headlines = news_ingestor.fetch_recent_news(company_name, days_back=1)
+                
+                realtime_score = 0.0
                 if headlines:
-                    global_sentiment = sentiment_analyzer.score_headlines(headlines)
+                    realtime_score = sentiment_analyzer.score_headlines(headlines)
+                
+                daily_bias = daily_gemini_bias.get(ticker, 0.0)
+                global_sentiment = 0.7 * daily_bias + 0.3 * realtime_score
+                print(f"  [HYBRID SENTIMENT] {ticker} | Daily Bias (Gemini): {daily_bias:+.2f} | Real-time (FinBERT): {realtime_score:+.2f} | Blended Score: {global_sentiment:+.2f}")
             except Exception as e:
                 print(f"  [Sentiment Error] Failed to calculate GDELT/FinBERT sentiment for {ticker}: {e}")
                 
