@@ -120,7 +120,26 @@ class IngestionAgent:
         # 8. Momentum (Rate of Change)
         df["ROC_10"] = (df["Close"] - df["Close"].shift(10)) / df["Close"].shift(10).replace(0, 0.001)
 
-        # 9. Target Variables:
+        # 9. Floor Pivot Points
+        prev_high = df["High"].shift(1)
+        prev_low = df["Low"].shift(1)
+        prev_close = df["Close"].shift(1)
+
+        p_level = (prev_high + prev_low + prev_close) / 3.0
+        r1_level = (2.0 * p_level) - prev_low
+        r2_level = p_level + (prev_high - prev_low)
+        s1_level = (2.0 * p_level) - prev_high
+        s2_level = p_level - (prev_high - prev_low)
+
+        df["Dist_P"] = (df["Close"] - p_level) / p_level.replace(0, 0.001)
+        df["Dist_R1"] = (df["Close"] - r1_level) / r1_level.replace(0, 0.001)
+        df["Dist_R2"] = (df["Close"] - r2_level) / r2_level.replace(0, 0.001)
+        df["Dist_S1"] = (df["Close"] - s1_level) / s1_level.replace(0, 0.001)
+        df["Dist_S2"] = (df["Close"] - s2_level) / s2_level.replace(0, 0.001)
+        
+        df[["Dist_P", "Dist_R1", "Dist_R2", "Dist_S1", "Dist_S2"]] = df[["Dist_P", "Dist_R1", "Dist_R2", "Dist_S1", "Dist_S2"]].ffill().bfill()
+
+        # 10. Target Variables:
         # Standard Target: 1 if price goes up >= 0.30% in the next 2 trading days, else 0
         # Ultra High-Precision Target: 1 if price goes up >= 0.60% in the next 2 trading days, else 0
         future_return = (df["Close"].shift(-2) - df["Close"]) / df["Close"]
