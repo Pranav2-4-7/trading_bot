@@ -141,6 +141,20 @@ def get_daily_sma50(ticker):
         print(f"Error fetching daily SMA for {ticker}: {e}")
         return None
 
+def calculate_dynamic_threshold(current_price, dma_200, base_threshold):
+    """Calculates a dynamic confidence threshold based on the 200 DMA drop."""
+    if dma_200 is None or pd.isna(dma_200) or dma_200 <= 0:
+        return base_threshold
+        
+    if current_price >= dma_200:
+        return base_threshold
+        
+    drop_pct = (dma_200 - current_price) / dma_200
+    dynamic_threshold = base_threshold + (drop_pct * 1.5)
+    dynamic_threshold = min(dynamic_threshold, 0.85)
+    print(f"  [MACRO FILTER] Stock below 200 DMA. Base Threshold: {base_threshold:.2f} | Required Dynamic Threshold: {dynamic_threshold:.2f}")
+    return dynamic_threshold
+
 def run_live_paper_trading(strategy=None, profile_id="macro"):
     global LIVE_DATA_CACHE
     tickers = [
@@ -384,10 +398,13 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
         current_price = current_prices[ticker]
 
         try:
+            dma_200 = float(features_df["MA200"].iloc[-1]) if "MA200" in features_df.columns else None
+            required_threshold = calculate_dynamic_threshold(current_price, dma_200, target_buy_threshold)
+
             signal, proba = strategy.predict_signal(features_df)
-            signal_val = int(signal[0])
             confidence = float(proba[0])
-            print(f"{ticker} | Signal: {signal_val} | Confidence: {confidence:.2%}")
+            signal_val = 1 if confidence >= required_threshold else 0
+            print(f"{ticker} | Signal: {signal_val} | Confidence: {confidence:.2%} (Required: {required_threshold:.2%})")
 
             # BUY Decision
             is_active = ticker in execution.active_positions
@@ -423,9 +440,9 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                         print(f"  [Micro-Dip Filter] Blocked BUY for {ticker}: 1-min RSI ({intraday_rsi:.1f}) exceeds profile max ({max_rsi_allowed:.1f})")
                         can_buy = False
 
-            print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={target_buy_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
+            print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={required_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
             
-            if signal_val == 1 and confidence >= target_buy_threshold and can_buy:
+            if signal_val == 1 and confidence >= required_threshold and can_buy:
                 # Run Live Sentiment override check
                 sentiment_score = fetch_sentiment_score(ticker)
                 print(f"  [Sentiment Agent] Ticker: {ticker} | Sentiment: {sentiment_score:+.2f}")
