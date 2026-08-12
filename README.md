@@ -89,9 +89,9 @@ The system runs **3 concurrent paper trading profiles** simultaneously:
 
 ---
 
-## 📈 Feature Engineering Pipeline (19 Features)
+## 📈 Feature Engineering Pipeline (24 Features)
 
-Each sample vector X_t consists of:
+Each sample vector $X_t$ consists of:
 
 1. **Price & Volume:** `Close`, `Volume`, `Volume_Ratio` (Volume / 20-period SMA Volume)
 2. **Moving Averages:** `MA50`, `MA200`, `Dist_MA50`, `Dist_MA200`
@@ -99,6 +99,8 @@ Each sample vector X_t consists of:
 4. **MACD Oscillators:** `MACD`, `MACD_Signal`, `MACD_Hist`
 5. **Volatility Bands:** `BB_Upper_Dist`, `BB_Lower_Dist`, `BB_Width`, `ATR`, `ATR_Ratio`
 6. **Financial Fundamentals:** `Net_Profit_Margin`, `Debt_to_Equity`
+7. **Hybrid Sentiment (20th Feature):** `Global_Sentiment_Score` (Blends 70% daily Gemini 2.5 Flash bias macro score + 30% real-time GDELT news FinBERT sentiment micro score)
+8. **Floor Pivot Points (NEW):** `Dist_P`, `Dist_R1`, `Dist_R2`, `Dist_S1`, `Dist_S2` (Normalized percentage distance from the current Close to the previous period's Pivot Point, Resistance, and Support levels)
 
 ---
 
@@ -111,6 +113,7 @@ Each sample vector X_t consists of:
    * Transaction Taxes & Brokerage = 0.12% of total trade value.
 3. **Averaging Down Rule:** If position is already open and price drops >= 0.30% from entry, the bot allows **one additional averaging buy** (max 2 entries total).
 4. **2-Day Cooldown:** Selling a position locks that ticker for 2 full trading days to prevent revenge trading / churn.
+5. **HODL Safety Override (NEW):** Stop-loss and trailing stop-loss checks are disabled to prevent selling at a loss during temporary market drawdowns. Positions will only close on positive Take-Profit breaches.
 
 ---
 
@@ -151,6 +154,11 @@ The bot utilizes a dynamic, probability-driven money management suite inside `Ri
    * If a high-conviction buy signal is received (confidence $\ge 68\%$, Ultra Strategy) but the account lacks liquid cash to fund it, the bot will scan currently open positions.
    * It identifies the weakest open holding (lowest confidence entry score; ties broken by lowest unrealized return).
    * If the new incoming signal's confidence is **at least 10% higher** than the weakest open position's confidence, the weak position is forcefully sold immediately to recycle the capital.
+
+3. **200 DMA Dynamic Confidence Threshold Scaling (NEW):**
+   * If the current asset price drops below its 200-period Moving Average (200 DMA), the required XGBoost prediction threshold is dynamically scaled up to demand higher conviction:
+     $$\text{Dynamic Threshold} = \text{Base Threshold} + (\text{Drop Pct} \times 1.5)$$
+   * Capped at a maximum threshold of `0.85` to maintain entry feasibility and protect the portfolio from catch-a-falling-knife signals.
 
 ---
 
