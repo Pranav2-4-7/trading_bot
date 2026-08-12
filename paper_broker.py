@@ -225,10 +225,8 @@ class RiskAgent:
         if price_change_pct >= self.take_profit_pct:
             return True, "Take-Profit Breached"
             
-        # Check trailing stop-loss from peak price
-        drawdown_from_peak = (peak_price - current_price) / peak_price
-        if drawdown_from_peak >= self.trailing_stop_loss_pct:
-            return True, "Trailing Stop-Loss Breached"
+        # Stop-loss and Trailing stop-loss are disabled per user preference to HODL through market dips.
+        return False, None
             
         return False, None
 
