@@ -7,11 +7,11 @@
 <!-- LIVE_METRICS_START -->
 ## 📈 Live Portfolio Performance Metrics
 
-> **Last Auto-Synced:** `2026-08-12 12:11:04 IST`
+> **Last Auto-Synced:** `2026-08-12 20:19:05 IST`
 
 | Strategy Profile | Initial Capital | Valuation | Cash Balance | Net Return | Win Rate | Open Positions | Closed Trades |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **🚀 5-Year Macro Trend (0.57 Threshold)** | INR 100,000.00 | **INR 103,341.80** | INR 480.63 | **`+3.34%`** 🟢 | **`100.0%`** | 7 | 3 |
+| **🚀 5-Year Macro Trend (0.57 Threshold)** | INR 100,000.00 | **INR 103,301.91** | INR 113.95 | **`+3.30%`** 🟢 | **`100.0%`** | 7 | 3 |
 | **🎯 Ultra-High Conviction (0.68 Threshold)** | INR 100,000.00 | **INR 100,000.00** | INR 100,000.00 | **`+0.00%`** ⚪ | **`0.0%`** | 0 | 0 |
 | **📜 Legacy Account** | INR 100,000.00 | **INR 98,208.62** | INR 619.85 | **`-1.79%`** 🔴 | **`0.0%`** | 4 | 1 |
 <!-- LIVE_METRICS_END -->
