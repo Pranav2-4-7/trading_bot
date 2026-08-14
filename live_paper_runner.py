@@ -2,6 +2,10 @@ import os
 import sys
 import pandas as pd
 import yfinance as yf
+try:
+    yf.set_tz_cache_location("C:\\AntiGravity\\data\\yf_cache")
+except Exception:
+    pass
 import datetime
 import urllib.request
 import json
@@ -21,6 +25,7 @@ from sentiment_analyzer import FinBERTSentimentAnalyzer
 # Instantiate globally
 news_ingestor = GlobalNewsIngestor()
 sentiment_analyzer = FinBERTSentimentAnalyzer()
+SENTIMENT_CACHE = {}
 
 # Company mapping dictionary
 COMPANY_NAME_MAP = {
@@ -356,21 +361,32 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             tech_row["Net_Profit_Margin"] = net_profit_margin
             tech_row["Debt_to_Equity"] = debt_to_equity
 
-            # Fetch global sentiment using GDELT and FinBERT
+            # Fetch global sentiment using cached GDELT and FinBERT scores (15-min cache lifetime)
+            import time
             global_sentiment = 0.0
-            try:
-                company_name = COMPANY_NAME_MAP.get(ticker, ticker.split(".")[0])
-                headlines = news_ingestor.fetch_recent_news(company_name, days_back=1)
-                
-                realtime_score = 0.0
-                if headlines:
-                    realtime_score = sentiment_analyzer.score_headlines(headlines)
-                
-                daily_bias = daily_gemini_bias.get(ticker, 0.0)
-                global_sentiment = 0.7 * daily_bias + 0.3 * realtime_score
-                print(f"  [HYBRID SENTIMENT] {ticker} | Daily Bias (Gemini): {daily_bias:+.2f} | Real-time (FinBERT): {realtime_score:+.2f} | Blended Score: {global_sentiment:+.2f}")
-            except Exception as e:
-                print(f"  [Sentiment Error] Failed to calculate GDELT/FinBERT sentiment for {ticker}: {e}")
+            now = time.time()
+            if ticker in SENTIMENT_CACHE and (now - SENTIMENT_CACHE[ticker][0]) < 900:
+                global_sentiment = SENTIMENT_CACHE[ticker][1]
+                print(f"  [HYBRID SENTIMENT] {ticker} (CACHED) | Blended Score: {global_sentiment:+.2f}")
+            else:
+                try:
+                    company_name = COMPANY_NAME_MAP.get(ticker, ticker.split(".")[0])
+                    headlines = news_ingestor.fetch_recent_news(company_name, days_back=1)
+                    
+                    realtime_score = 0.0
+                    if headlines:
+                        realtime_score = sentiment_analyzer.score_headlines(headlines)
+                    
+                    daily_bias = daily_gemini_bias.get(ticker, 0.0)
+                    global_sentiment = 0.7 * daily_bias + 0.3 * realtime_score
+                    SENTIMENT_CACHE[ticker] = (now, global_sentiment)
+                    print(f"  [HYBRID SENTIMENT] {ticker} | Daily Bias (Gemini): {daily_bias:+.2f} | Real-time (FinBERT): {realtime_score:+.2f} | Blended Score: {global_sentiment:+.2f}")
+                except Exception as e:
+                    print(f"  [Sentiment Error] Failed to calculate GDELT/FinBERT sentiment for {ticker}: {e}")
+                    if ticker in SENTIMENT_CACHE:
+                        global_sentiment = SENTIMENT_CACHE[ticker][1]
+                    else:
+                        global_sentiment = 0.0
                 
             tech_row["Global_Sentiment_Score"] = global_sentiment
 
