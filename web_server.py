@@ -6,6 +6,10 @@ import threading
 import numpy as np
 import pandas as pd
 import yfinance as yf
+try:
+    yf.set_tz_cache_location("C:\\AntiGravity\\data\\yf_cache")
+except Exception:
+    pass
 from flask import Flask, jsonify, render_template
 
 # Add current folder to path to allow importing adjacent modules
@@ -220,7 +224,9 @@ def get_ticker_data(ticker):
         return jsonify(records)
         
     except Exception as e:
+        import traceback
         print(f"Error fetching live ticker data for {ticker}: {e}")
+        print(traceback.format_exc())
         return jsonify({"error": str(e)}), 500
 
 @app.route("/api/logs")

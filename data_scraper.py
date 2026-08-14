@@ -3,6 +3,10 @@ import sys
 import subprocess
 import pandas as pd
 import yfinance as yf
+try:
+    yf.set_tz_cache_location("C:\\AntiGravity\\data\\yf_cache")
+except Exception:
+    pass
 import numpy as np
 
 from drift_monitor import evaluate_market_drift
