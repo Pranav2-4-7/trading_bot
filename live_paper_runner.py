@@ -6,6 +6,8 @@ try:
     yf.set_tz_cache_location("C:\\AntiGravity\\data\\yf_cache")
 except Exception:
     pass
+import yfinance.utils as yf_utils
+yf_utils._sys.stderr = sys.stderr
 import datetime
 import urllib.request
 import json
@@ -397,7 +399,9 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             print(f"Current price for {ticker}: INR {live_price:.2f}")
 
         except Exception as e:
+            import traceback
             print(f"Error processing live data for {ticker}: {e}")
+            print(traceback.format_exc())
 
     # 5. Risk Agent Check: Evaluate active positions first
     print("\n[Risk Check] Evaluating active positions...")

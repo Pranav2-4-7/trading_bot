@@ -39,19 +39,35 @@ class DualWriter:
         self.file_handle = file_handle
 
     def write(self, message):
-        self.stdout.write(message)
-        self.file_handle.write(message)
-        self.file_handle.flush()
+        try:
+            if self.stdout:
+                self.stdout.write(message)
+        except Exception:
+            pass
+        try:
+            self.file_handle.write(message)
+            self.file_handle.flush()
+        except Exception:
+            pass
 
     def flush(self):
-        self.stdout.flush()
-        self.file_handle.flush()
+        try:
+            if self.stdout:
+                self.stdout.flush()
+        except Exception:
+            pass
+        try:
+            self.file_handle.flush()
+        except Exception:
+            pass
 
 # Initialize log mirroring
 os.makedirs(DATA_DIR, exist_ok=True)
 log_file_handle = open(LOG_FILE, "a", encoding="utf-8")
 sys.stdout = DualWriter(sys.stdout, log_file_handle)
 sys.stderr = DualWriter(sys.stderr, log_file_handle)
+import yfinance.utils as yf_utils
+yf_utils._sys.stderr = sys.stderr
 
 @app.route("/")
 def index():
@@ -291,7 +307,9 @@ def background_scheduler():
             run_live_paper_trading(strategy=global_strategy, profile_id="legacy")
             print("[Scheduler] Automatic market scan completed successfully for all active profiles.")
         except Exception as e:
+            import traceback
             print(f"[Scheduler Error] Auto scan failed: {e}")
+            print(traceback.format_exc())
         # Sleep for 10 seconds to allow smooth, responsive UI interactions
         time.sleep(10)
 
