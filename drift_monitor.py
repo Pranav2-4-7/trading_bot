@@ -87,8 +87,8 @@ def evaluate_market_drift(reference_data_path, current_data_path):
 if __name__ == "__main__":
     # Test execution
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    ref_path = os.path.join(base_dir, "data", "RELIANCE.NS_hybrid_features.csv")
-    curr_path = os.path.join(base_dir, "data", "RELIANCE.NS_hybrid_features.csv")
+    ref_path = os.path.join(base_dir, "data", "SUNPHARMA.NS_hybrid_features.csv")
+    curr_path = os.path.join(base_dir, "data", "SUNPHARMA.NS_hybrid_features.csv")
     
     if os.path.exists(ref_path):
         is_drifted = evaluate_market_drift(ref_path, curr_path)

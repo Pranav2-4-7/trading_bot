@@ -16,6 +16,7 @@ from flask import Flask, jsonify, render_template
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from live_paper_runner import run_live_paper_trading
+from data_scraper import WATCHLIST, COMPANY_NAME_MAP
 
 # Define templates and static folder paths relative to this script
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -71,7 +72,7 @@ yf_utils._sys.stderr = sys.stderr
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", watchlist=WATCHLIST, company_name_map=COMPANY_NAME_MAP)
 
 @app.route("/api/portfolio")
 def get_portfolio():
@@ -281,11 +282,7 @@ def background_scheduler():
     """Background daemon thread to execute live paper trading scan cycles every 2 seconds."""
     global global_strategy, ultra_strategy
     print("Pre-training Strategy Agents (Standard Brain & Dedicated Ultra High-Precision Brain) on startup...")
-    tickers = [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-        "BHARTIARTL.NS", "WIPRO.NS"
-    ]
+    tickers = WATCHLIST
     from model import StrategyAgent, UltraStrategyAgent
     
     print("\n--- Training Standard ML Brain (Macro / Legacy Profiles) ---")

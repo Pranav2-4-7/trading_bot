@@ -25,14 +25,11 @@ def generate_daily_gemini_bias():
     base_dir = os.path.dirname(os.path.abspath(__file__))
     load_dotenv(os.path.join(base_dir, ".env"))
 
+    from data_scraper import WATCHLIST, COMPANY_NAME_MAP
     # If GEMINI_API_KEY is not set, default all daily biases to 0.0
     if not os.environ.get("GEMINI_API_KEY"):
         print("[Gemini warning] GEMINI_API_KEY environment variable not set. Defaulting all daily biases to 0.0.")
-        default_bias = {t: 0.0 for t in [
-            "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-            "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-            "BHARTIARTL.NS", "WIPRO.NS"
-        ]}
+        default_bias = {t: 0.0 for t in WATCHLIST}
         bias_file = os.path.join(base_dir, "..", "data", "daily_gemini_bias.json")
         with open(bias_file, "w") as f:
             json.dump(default_bias, f, indent=4)
@@ -42,24 +39,8 @@ def generate_daily_gemini_bias():
     ingestor = GlobalNewsIngestor()
     analyzer = GeminiSentimentAnalyzer()
 
-    tickers = [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-        "BHARTIARTL.NS", "WIPRO.NS"
-    ]
-    
-    company_map = {
-        "RELIANCE.NS": "Reliance Industries",
-        "TCS.NS": "Tata Consultancy Services",
-        "INFY.NS": "Infosys",
-        "HDFCBANK.NS": "HDFC Bank",
-        "ICICIBANK.NS": "ICICI Bank",
-        "SBIN.NS": "State Bank of India",
-        "ITC.NS": "ITC",
-        "LT.NS": "Larsen & Toubro",
-        "BHARTIARTL.NS": "Bharti Airtel",
-        "WIPRO.NS": "Wipro"
-    }
+    tickers = WATCHLIST
+    company_map = COMPANY_NAME_MAP
 
     bias_scores = {}
     for ticker in tickers:

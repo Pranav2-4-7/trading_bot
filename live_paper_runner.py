@@ -18,7 +18,7 @@ import numpy as np
 # Add current folder to path to allow importing adjacent modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from data_scraper import IngestionAgent
+from data_scraper import IngestionAgent, WATCHLIST, COMPANY_NAME_MAP
 from model import StrategyAgent
 from paper_broker import ExecutionAgent, RiskAgent
 from news_ingestor import GlobalNewsIngestor
@@ -28,20 +28,6 @@ from sentiment_analyzer import FinBERTSentimentAnalyzer
 news_ingestor = GlobalNewsIngestor()
 sentiment_analyzer = FinBERTSentimentAnalyzer()
 SENTIMENT_CACHE = {}
-
-# Company mapping dictionary
-COMPANY_NAME_MAP = {
-    "RELIANCE.NS": "Reliance Industries",
-    "TCS.NS": "Tata Consultancy Services",
-    "INFY.NS": "Infosys",
-    "HDFCBANK.NS": "HDFC Bank",
-    "ICICIBANK.NS": "ICICI Bank",
-    "SBIN.NS": "State Bank of India",
-    "ITC.NS": "ITC",
-    "LT.NS": "Larsen & Toubro",
-    "BHARTIARTL.NS": "Bharti Airtel",
-    "WIPRO.NS": "Wipro"
-}
 
 # Global cache to persist historical dataframes and avoid yfinance rate-limiting
 LIVE_DATA_CACHE = {}
@@ -164,11 +150,7 @@ def calculate_dynamic_threshold(current_price, dma_200, base_threshold):
 
 def run_live_paper_trading(strategy=None, profile_id="macro"):
     global LIVE_DATA_CACHE
-    tickers = [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-        "BHARTIARTL.NS", "WIPRO.NS"
-    ]
+    tickers = WATCHLIST
     
     base_dir = os.path.dirname(os.path.abspath(__file__))
     portfolio_filename = f"live_paper_portfolio_{profile_id}.json"

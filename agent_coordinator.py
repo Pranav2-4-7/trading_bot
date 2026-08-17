@@ -9,7 +9,7 @@ import mlflow.xgboost
 # Add current folder to path to allow importing adjacent modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from data_scraper import IngestionAgent
+from data_scraper import IngestionAgent, WATCHLIST
 from model import StrategyAgent, UltraStrategyAgent
 from paper_broker import ExecutionAgent, RiskAgent
 
@@ -19,11 +19,7 @@ def load_all_hybrid_data(data_dir="data", tickers=None):
     Loads and combines all hybrid feature CSV files for specified tickers into a single DataFrame.
     """
     if tickers is None:
-        tickers = [
-            "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-            "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-            "BHARTIARTL.NS", "WIPRO.NS"
-        ]
+        tickers = WATCHLIST
     
     combined_df = pd.DataFrame()
     for ticker in tickers:
@@ -155,12 +151,12 @@ def walk_forward_optimization(data, train_months=24, test_months=1, tickers=None
                 })
 
                 # Log metrics to console for this specific rolling window
-                print(f"  └─ Standard Brain (0.57 Threshold) | Acc: {strat_metrics['accuracy']:.2%} | F1: {strat_metrics['f1_score']:.2%} | Prec: {strat_metrics['precision']:.2%} | Buy Signals: {strat_metrics['buy_signals']}")
-                print(f"  └─ Ultra Brain    (0.68 Threshold) | Acc: {ultra_metrics['accuracy']:.2%} | F1: {ultra_metrics['f1_score']:.2%} | Prec: {ultra_metrics['precision']:.2%} | Buy Signals: {ultra_metrics['buy_signals']}")
+                print(f"  |- Standard Brain (0.57 Threshold) | Acc: {strat_metrics['accuracy']:.2%} | F1: {strat_metrics['f1_score']:.2%} | Prec: {strat_metrics['precision']:.2%} | Buy Signals: {strat_metrics['buy_signals']}")
+                print(f"  |- Ultra Brain    (0.68 Threshold) | Acc: {ultra_metrics['accuracy']:.2%} | F1: {ultra_metrics['f1_score']:.2%} | Prec: {ultra_metrics['precision']:.2%} | Buy Signals: {ultra_metrics['buy_signals']}")
 
                 # Model Registry Promotion Gating (F1 > 0.60)
                 if strat_metrics['f1_score'] > 0.60:
-                    print(f"  └─ [Model Registry] Standard Brain F1 ({strat_metrics['f1_score']:.2%}) > 60%! Registering model...")
+                    print(f"  |- [Model Registry] Standard Brain F1 ({strat_metrics['f1_score']:.2%}) > 60%! Registering model...")
                     try:
                         mlflow.xgboost.log_model(
                             strategy_agent.model,
@@ -168,10 +164,10 @@ def walk_forward_optimization(data, train_months=24, test_months=1, tickers=None
                             registered_model_name="TradingBOT_XGBoost_Production"
                         )
                     except Exception as reg_err:
-                        print(f"  └─ [Model Registry Warning] {reg_err}")
+                        print(f"  |- [Model Registry Warning] {reg_err}")
 
                 if ultra_metrics['f1_score'] > 0.60:
-                    print(f"  └─ [Model Registry] Ultra Brain F1 ({ultra_metrics['f1_score']:.2%}) > 60%! Registering model...")
+                    print(f"  |- [Model Registry] Ultra Brain F1 ({ultra_metrics['f1_score']:.2%}) > 60%! Registering model...")
                     try:
                         mlflow.xgboost.log_model(
                             ultra_agent.model,
@@ -179,7 +175,7 @@ def walk_forward_optimization(data, train_months=24, test_months=1, tickers=None
                             registered_model_name="TradingBOT_XGBoost_Production"
                         )
                     except Exception as reg_err:
-                        print(f"  └─ [Model Registry Warning] {reg_err}")
+                        print(f"  |- [Model Registry Warning] {reg_err}")
 
             wfo_summary.append({
                 "iteration": iteration,
@@ -223,11 +219,7 @@ if __name__ == "__main__":
     print(f"Target Directory: {data_dir}")
     print("==================================================")
     
-    target_tickers = [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-        "BHARTIARTL.NS", "WIPRO.NS"
-    ]
+    target_tickers = WATCHLIST
     
     dataframes = []
     for ticker in target_tickers:

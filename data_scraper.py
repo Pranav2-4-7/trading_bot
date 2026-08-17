@@ -17,18 +17,24 @@ from sentiment_analyzer import FinBERTSentimentAnalyzer
 news_ingestor = GlobalNewsIngestor()
 sentiment_analyzer = FinBERTSentimentAnalyzer()
 
-# Company mapping dictionary
+# Watchlist Tickers (Pharma & Sugar Leaders)
+WATCHLIST = [
+    'SUNPHARMA.NS', 'CIPLA.NS', 'DRREDDY.NS', 'DIVISLAB.NS', 'LUPIN.NS',
+    'BALRAMCHIN.NS', 'EIDPARRY.NS', 'RENUKA.NS', 'TRIVENI.NS', 'DALMIASUG.NS'
+]
+
+# Company mapping dictionary for GDELT news ingestion
 COMPANY_NAME_MAP = {
-    "RELIANCE.NS": "Reliance Industries",
-    "TCS.NS": "Tata Consultancy Services",
-    "INFY.NS": "Infosys",
-    "HDFCBANK.NS": "HDFC Bank",
-    "ICICIBANK.NS": "ICICI Bank",
-    "SBIN.NS": "State Bank of India",
-    "ITC.NS": "ITC",
-    "LT.NS": "Larsen & Toubro",
-    "BHARTIARTL.NS": "Bharti Airtel",
-    "WIPRO.NS": "Wipro"
+    'SUNPHARMA.NS': 'Sun Pharma',
+    'CIPLA.NS': 'Cipla',
+    'DRREDDY.NS': 'Dr Reddys Laboratories',
+    'DIVISLAB.NS': 'Divis Laboratories',
+    'LUPIN.NS': 'Lupin',
+    'BALRAMCHIN.NS': 'Balrampur Chini Mills',
+    'EIDPARRY.NS': 'EID Parry',
+    'RENUKA.NS': 'Shree Renuka Sugars',
+    'TRIVENI.NS': 'Triveni Engineering',
+    'DALMIASUG.NS': 'Dalmia Bharat Sugar'
 }
 
 class IngestionAgent:
@@ -264,11 +270,7 @@ class IngestionAgent:
 
 
 if __name__ == "__main__":
-    target_tickers = [
-        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", 
-        "ICICIBANK.NS", "SBIN.NS", "ITC.NS", "LT.NS", 
-        "BHARTIARTL.NS", "WIPRO.NS"
-    ]
+    target_tickers = WATCHLIST
     start = "2021-01-01"
     end = "2026-06-25"
 

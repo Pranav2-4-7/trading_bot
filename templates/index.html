@@ -95,17 +95,10 @@
                             <button class="tf-btn active" data-days="all">Max</button>
                         </div>
                         <div class="selector">
-                            <select id="ticker-select">
-                                <option value="INFY.NS">INFY.NS (Infosys)</option>
-                                <option value="RELIANCE.NS">RELIANCE.NS (Reliance)</option>
-                                <option value="TCS.NS">TCS.NS (TCS)</option>
-                                <option value="HDFCBANK.NS">HDFCBANK.NS (HDFC Bank)</option>
-                                <option value="ICICIBANK.NS">ICICIBANK.NS (ICICI Bank)</option>
-                                <option value="SBIN.NS">SBIN.NS (SBI)</option>
-                                <option value="ITC.NS">ITC.NS (ITC)</option>
-                                <option value="LT.NS">LT.NS (Larsen & Toubro)</option>
-                                <option value="BHARTIARTL.NS">BHARTIARTL.NS (Bharti Airtel)</option>
-                                <option value="WIPRO.NS">WIPRO.NS (Wipro)</option>
+                             <select id="ticker-select">
+                                {% for ticker in watchlist %}
+                                <option value="{{ ticker }}">{{ ticker }} ({{ company_name_map[ticker] }})</option>
+                                {% endfor %}
                             </select>
                         </div>
                     </div>
