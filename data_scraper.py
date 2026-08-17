@@ -150,11 +150,67 @@ class IngestionAgent:
         df[["Dist_P", "Dist_R1", "Dist_R2", "Dist_S1", "Dist_S2"]] = df[["Dist_P", "Dist_R1", "Dist_R2", "Dist_S1", "Dist_S2"]].ffill().bfill()
 
         # 10. Target Variables:
-        # Standard Target: 1 if price goes up >= 0.30% in the next 2 trading days, else 0
-        # Ultra High-Precision Target: 1 if price goes up >= 0.60% in the next 2 trading days, else 0
-        future_return = (df["Close"].shift(-2) - df["Close"]) / df["Close"]
-        df["Target"] = (future_return >= 0.0030).astype(int)
-        df["Target_Ultra"] = (future_return >= 0.0060).astype(int)
+        # Target: 1 if price increases by >= 4.0% (TP) before dropping >= 3.0% (SL) within a 10-period forward window; otherwise 0
+        targets = []
+        targets_ultra = []
+        closes = df["Close"].values
+        highs = df["High"].values
+        lows = df["Low"].values
+        n = len(df)
+        
+        for i in range(n):
+            entry_price = closes[i]
+            target_val = 0
+            target_ultra_val = 0
+            
+            # Look forward up to 10 periods
+            for j in range(1, 11):
+                if i + j >= n:
+                    break
+                high_change = (highs[i+j] - entry_price) / entry_price
+                low_change = (lows[i+j] - entry_price) / entry_price
+                
+                # Check target criteria
+                hit_sl = (low_change <= -0.03)
+                hit_tp = (high_change >= 0.04)
+                hit_tp_ultra = (high_change >= 0.06)
+                
+                # Evaluation for Target
+                if hit_sl and hit_tp:
+                    target_val = 0
+                    break
+                elif hit_sl:
+                    target_val = 0
+                    break
+                elif hit_tp:
+                    target_val = 1
+                    break
+            
+            # Evaluation for Target_Ultra
+            for j in range(1, 11):
+                if i + j >= n:
+                    break
+                high_change = (highs[i+j] - entry_price) / entry_price
+                low_change = (lows[i+j] - entry_price) / entry_price
+                
+                hit_sl = (low_change <= -0.03)
+                hit_tp_ultra = (high_change >= 0.06)
+                
+                if hit_sl and hit_tp_ultra:
+                    target_ultra_val = 0
+                    break
+                elif hit_sl:
+                    target_ultra_val = 0
+                    break
+                elif hit_tp_ultra:
+                    target_ultra_val = 1
+                    break
+                    
+            targets.append(target_val)
+            targets_ultra.append(target_ultra_val)
+            
+        df["Target"] = targets
+        df["Target_Ultra"] = targets_ultra
 
         # Drop rows where indicators or target couldn't be calculated (edges of data)
         df["Global_Sentiment_Score"] = 0.0
@@ -271,8 +327,9 @@ class IngestionAgent:
 
 if __name__ == "__main__":
     target_tickers = WATCHLIST
-    start = "2021-01-01"
-    end = "2026-06-25"
+    # Download 2 to 3 years of daily data (e.g., 2023-08-17 to 2026-08-17)
+    start = "2023-08-17"
+    end = "2026-08-17"
 
     agent = IngestionAgent()
 
@@ -286,3 +343,25 @@ if __name__ == "__main__":
     # 3. Fetch fundamentals and merge them
     for ticker in target_tickers:
         agent.merge_price_and_fundamental_data(ticker)
+
+    # 4. Concatenate and export to data/training_data_pharma_sugar.csv
+    data_dir = "data"
+    dataframes = []
+    for ticker in target_tickers:
+        filepath = os.path.join(data_dir, f"{ticker}_hybrid_features.csv")
+        if os.path.exists(filepath):
+            print(f"Loading {filepath} for concatenation...")
+            df = pd.read_csv(filepath)
+            df["Ticker"] = ticker
+            dataframes.append(df)
+            
+    if dataframes:
+        master_df = pd.concat(dataframes, axis=0, ignore_index=True)
+        # Drop any NaN values resulting from indicator lookbacks
+        master_df = master_df.dropna()
+        master_path = os.path.join(data_dir, "training_data_pharma_sugar.csv")
+        master_df.to_csv(master_path, index=False)
+        print(f"\nSuccessfully exported clean concatenated master dataset to {master_path}")
+        print(f"Master dataset shape: {master_df.shape[0]} rows × {master_df.shape[1]} columns")
+    else:
+        print("Error: No processed files found for concatenation.")
