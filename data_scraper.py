@@ -17,14 +17,30 @@ from sentiment_analyzer import FinBERTSentimentAnalyzer
 news_ingestor = GlobalNewsIngestor()
 sentiment_analyzer = FinBERTSentimentAnalyzer()
 
-# Watchlist Tickers (Pharma & Sugar Leaders)
+# Watchlist Tickers (Tech, Banking, Conglomerate, Pharma & Sugar Leaders - 20 Tickers)
 WATCHLIST = [
+    # Tech, Banking & Core Leaders
+    'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HDFCBANK.NS', 'ICICIBANK.NS',
+    'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'WIPRO.NS',
+    # Pharma & Sugar High-Momentum Leaders
     'SUNPHARMA.NS', 'CIPLA.NS', 'DRREDDY.NS', 'DIVISLAB.NS', 'LUPIN.NS',
     'BALRAMCHIN.NS', 'EIDPARRY.NS', 'RENUKA.NS', 'TRIVENI.NS', 'DALMIASUG.NS'
 ]
 
 # Company mapping dictionary for GDELT news ingestion
 COMPANY_NAME_MAP = {
+    # Core Leaders
+    'RELIANCE.NS': 'Reliance Industries',
+    'TCS.NS': 'Tata Consultancy Services',
+    'INFY.NS': 'Infosys',
+    'HDFCBANK.NS': 'HDFC Bank',
+    'ICICIBANK.NS': 'ICICI Bank',
+    'SBIN.NS': 'State Bank of India',
+    'BHARTIARTL.NS': 'Bharti Airtel',
+    'ITC.NS': 'ITC Limited',
+    'LT.NS': 'Larsen & Toubro',
+    'WIPRO.NS': 'Wipro',
+    # Pharma & Sugar Leaders
     'SUNPHARMA.NS': 'Sun Pharma',
     'CIPLA.NS': 'Cipla',
     'DRREDDY.NS': 'Dr Reddys Laboratories',
