@@ -10,4 +10,3 @@ mlflow.db
 .ipynb_checkpoints/
 .vs/
 .idea/
-model.py

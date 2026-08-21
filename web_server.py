@@ -318,6 +318,7 @@ if __name__ == "__main__":
     scheduler_thread = threading.Thread(target=background_scheduler, daemon=True)
     scheduler_thread.start()
 
-    print("Starting TradingBOT Web Dashboard server...")
-    print("Access the dashboard at http://127.0.0.1:5000")
-    app.run(host="127.0.0.1", port=5000, debug=False, threaded=True)
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", 5000))
+    print(f"Starting TradingBOT Web Dashboard server on http://{host}:{port}...")
+    app.run(host=host, port=port, debug=False, threaded=True)
