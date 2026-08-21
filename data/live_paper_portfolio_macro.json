@@ -1,0 +1,130 @@
+{
+    "initial_capital": 100000.0,
+    "current_cash": 113.9531221908818,
+    "active_positions": {
+        "ICICIBANK.NS": {
+            "entry_price": 1461.0801505737302,
+            "shares": 12,
+            "entry_date": "2026-07-21 15:16:12",
+            "last_buy_date": "2026-07-22 09:15:31",
+            "buy_count": 2,
+            "peak_price": 1461.0801505737302
+        },
+        "BHARTIARTL.NS": {
+            "entry_price": 1946.4227372131347,
+            "shares": 10,
+            "entry_date": "2026-07-21 15:16:12",
+            "last_buy_date": "2026-07-22 09:27:38",
+            "buy_count": 2,
+            "peak_price": 1997.4000244140625
+        },
+        "ITC.NS": {
+            "entry_price": 286.75794973919477,
+            "fill_price": 286.75794973919477,
+            "slippage_inr": 0.057937532163503815,
+            "slippage_pct": 0.00020208416357396622,
+            "total_slippage_cost": 1.9698760935591297,
+            "shares": 34,
+            "entry_date": "2026-07-27 12:13:25",
+            "buy_count": 1,
+            "peak_price": 289.95001220703125
+        },
+        "WIPRO.NS": {
+            "entry_price": 183.82114808104396,
+            "fill_price": 183.11663399423153,
+            "slippage_inr": 0.03663216317685269,
+            "slippage_pct": 0.00020008828277518078,
+            "total_slippage_cost": 0.07326432635370538,
+            "shares": 56,
+            "entry_date": "2026-07-29 13:14:18",
+            "last_buy_date": "2026-08-12 14:44:43",
+            "buy_count": 2,
+            "peak_price": 184.19000244140625,
+            "kelly_fraction": 0.07218027114868164,
+            "confidence_score": 0.5721802711486816
+        },
+        "TCS.NS": {
+            "entry_price": 2454.4935872584083,
+            "fill_price": 2450.5903805280414,
+            "slippage_inr": 0.49028287179129465,
+            "slippage_pct": 0.0002001072822536092,
+            "total_slippage_cost": 1.9611314871651786,
+            "shares": 8,
+            "entry_date": "2026-07-30 12:22:54",
+            "last_buy_date": "2026-07-30 13:53:23",
+            "buy_count": 2,
+            "peak_price": 2473.699951171875
+        },
+        "RELIANCE.NS": {
+            "entry_price": 1324.8272938219268,
+            "fill_price": 1319.0654036152985,
+            "slippage_inr": 0.26535478717335687,
+            "slippage_pct": 0.00020120926398899437,
+            "total_slippage_cost": 1.5921287230401413,
+            "shares": 13,
+            "entry_date": "2026-08-07 13:46:38",
+            "last_buy_date": "2026-08-11 09:36:33",
+            "buy_count": 2,
+            "peak_price": 1329.0,
+            "kelly_fraction": 0.13555675745010376,
+            "confidence_score": 0.6355567574501038
+        },
+        "INFY.NS": {
+            "entry_price": 1179.2360363771752,
+            "fill_price": 1179.2360363771752,
+            "slippage_inr": 0.23603637717514087,
+            "slippage_pct": 0.0002002004895463451,
+            "total_slippage_cost": 1.888291017401127,
+            "shares": 8,
+            "entry_date": "2026-08-07 13:46:38",
+            "buy_count": 1,
+            "peak_price": 1192.0
+        }
+    },
+    "cooldowns": {
+        "TCS.NS": "2026-07-28 11:00:43",
+        "INFY.NS": "2026-07-30 12:22:54",
+        "SBIN.NS": "2026-08-07 13:46:38"
+    },
+    "trade_log": [
+        {
+            "Ticker": "TCS.NS",
+            "Entry_Date": "2026-07-21 15:16:12",
+            "Exit_Date": "2026-07-28 11:00:43",
+            "Entry_Price": 2217.0579261474604,
+            "Exit_Price": 2400.616277627512,
+            "Fill_Price": 2400.616277627512,
+            "Slippage_INR": 0.48382002873799707,
+            "Slippage_Pct": 0.00020149931658836759,
+            "Total_Slippage_Cost": 3.8705602299039765,
+            "Profit_Loss": 1445.4208955751892,
+            "Exit_Reason": "Take-Profit Breached"
+        },
+        {
+            "Ticker": "INFY.NS",
+            "Entry_Date": "2026-07-28 11:11:27",
+            "Exit_Date": "2026-07-30 12:22:54",
+            "Entry_Price": 1105.7718368754038,
+            "Exit_Price": 1174.963084976162,
+            "Fill_Price": 1174.963084976162,
+            "Slippage_INR": 0.2368661957129231,
+            "Slippage_Pct": 0.00020155395299049073,
+            "Total_Slippage_Cost": 4.263591522832616,
+            "Profit_Loss": 1220.0632631781627,
+            "Exit_Reason": "Take-Profit Breached"
+        },
+        {
+            "Ticker": "SBIN.NS",
+            "Entry_Date": "2026-07-21 15:16:12",
+            "Exit_Date": "2026-08-07 13:46:38",
+            "Entry_Price": 1041.6705383605956,
+            "Exit_Price": 1097.0799948531023,
+            "Fill_Price": 1097.0799948531023,
+            "Slippage_INR": 0.2200539750226748,
+            "Slippage_Pct": 0.0002005412970296357,
+            "Total_Slippage_Cost": 3.9609715504081464,
+            "Profit_Loss": 973.6732889762934,
+            "Exit_Reason": "Take-Profit Breached"
+        }
+    ]
+}

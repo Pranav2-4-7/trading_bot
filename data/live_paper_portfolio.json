@@ -1,0 +1,47 @@
+{
+    "initial_capital": 100000.0,
+    "current_cash": 619.8504308849188,
+    "active_positions": {
+        "INFY.NS": {
+            "entry_price": 1079.2393011474608,
+            "shares": 18,
+            "entry_date": "2026-07-15 13:18:56",
+            "peak_price": 1102.9000244140625
+        },
+        "TCS.NS": {
+            "entry_price": 2184.191647705078,
+            "shares": 9,
+            "entry_date": "2026-07-15 13:51:03",
+            "peak_price": 2273.800048828125
+        },
+        "RELIANCE.NS": {
+            "entry_price": 1303.851551147461,
+            "shares": 15,
+            "entry_date": "2026-07-16 12:59:20",
+            "buy_count": 1,
+            "peak_price": 1333.300048828125
+        },
+        "HDFCBANK.NS": {
+            "entry_price": 778.9392933197021,
+            "shares": 50,
+            "entry_date": "2026-07-20 11:57:09",
+            "last_buy_date": "2026-07-20 12:41:37",
+            "buy_count": 2,
+            "peak_price": 781.6500244140625
+        }
+    },
+    "cooldowns": {
+        "HDFCBANK.NS": "2026-07-20 11:57:09"
+    },
+    "trade_log": [
+        {
+            "Ticker": "HDFCBANK.NS",
+            "Entry_Date": "2026-07-15 13:18:56",
+            "Exit_Date": "2026-07-20 11:57:09",
+            "Entry_Price": 812.2809374999998,
+            "Exit_Price": 779.3101622009277,
+            "Profit_Loss": -1627.4854796982327,
+            "Exit_Reason": "Trailing Stop-Loss Breached"
+        }
+    ]
+}
