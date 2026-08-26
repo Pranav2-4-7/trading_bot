@@ -160,6 +160,12 @@ The bot utilizes a dynamic, probability-driven money management suite inside `Ri
      $$\text{Dynamic Threshold} = \text{Base Threshold} + (\text{Drop Pct} \times 1.5)$$
    * Capped at a maximum threshold of `0.85` to maintain entry feasibility and protect the portfolio from catch-a-falling-knife signals.
 
+4. **Active Multi-Tier Stop-Loss & Capital Protection (`check_position_risk`):**
+   * **Fixed Stop-Loss:** Protects capital against severe downward price shocks by triggering an automatic liquidation if price drops $\le -3.0\%$ (Ultra Strategy) or $\le -5.0\%$ (Macro/Legacy Strategies) from initial entry price.
+   * **Dynamic Trailing Stop-Loss:** Continuously ratchets up protection as the stock rallies, calculating drawdown from the highest recorded peak price (`peak_price`). Triggers an exit if price falls by $\ge 3.0\%$ (Ultra) or $\ge 5.0\%$ (Macro) from the peak to protect accumulated gains.
+   * **Take-Profit Target Execution:** Locks in profits automatically once take-profit targets ($\ge +4.0\%$ Ultra, $\ge +5.0\%$ Macro) are achieved.
+   * **Cooldown & Trend Enforcement:** Prevents churn by blocking buys on assets in a 2-day cooldown window or trading below the 50-day Simple Moving Average (50 SMA).
+
 ---
 
 ## ⚙️ Installation & Running Locally

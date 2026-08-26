@@ -219,15 +219,22 @@ class RiskAgent:
         self.trailing_stop_loss_pct = trailing_stop_loss_pct
 
     def check_position_risk(self, ticker, current_price, entry_price, peak_price):
-        """Checks if a position has breached trailing stop-loss or take-profit boundaries."""
-        # Check take-profit from initial entry price
+        """Checks if a position has breached trailing stop-loss, fixed stop-loss, or take-profit boundaries."""
+        # 1. Check Take-Profit from initial entry price
         price_change_pct = (current_price - entry_price) / entry_price
         if price_change_pct >= self.take_profit_pct:
             return True, "Take-Profit Breached"
             
-        # Stop-loss and Trailing stop-loss are disabled per user preference to HODL through market dips.
-        return False, None
+        # 2. Check Fixed Stop-Loss from initial entry price
+        if price_change_pct <= -self.stop_loss_pct:
+            return True, "Stop-Loss Breached"
             
+        # 3. Check Trailing Stop-Loss from highest recorded peak price
+        if peak_price and peak_price > entry_price:
+            trailing_drawdown_pct = (peak_price - current_price) / peak_price
+            if trailing_drawdown_pct >= self.trailing_stop_loss_pct:
+                return True, "Trailing Stop-Loss Breached"
+                
         return False, None
 
     def calculate_buy_allocation(self, initial_capital, current_cash):
