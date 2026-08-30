@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 import pandas as pd
 import yfinance as yf
 try:
@@ -20,7 +21,13 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from data_scraper import IngestionAgent, WATCHLIST, COMPANY_NAME_MAP
 from model import StrategyAgent
-from paper_broker import ExecutionAgent, RiskAgent
+from paper_broker import (
+    ExecutionAgent, 
+    RiskAgent, 
+    PortfolioRiskAgent, 
+    TICKER_SECTORS, 
+    compute_60d_correlation_matrix
+)
 from news_ingestor import GlobalNewsIngestor
 from sentiment_analyzer import FinBERTSentimentAnalyzer
 
@@ -32,8 +39,19 @@ SENTIMENT_CACHE = {}
 # Global cache to persist historical dataframes and avoid yfinance rate-limiting
 LIVE_DATA_CACHE = {}
 
+# Dead man's switch tracking
+LAST_SUCCESSFUL_FETCH_TIMESTAMP = None
+CONSECUTIVE_FETCH_FAILURES = 0
+
+# Daily drawdown circuit breaker tracking: {profile_id: {'date': 'YYYY-MM-DD', 'start_val': float}}
+PORTFOLIO_DAY_START_TRACKER = {}
+
+# Cached 60-day correlation matrix
+CORRELATION_MATRIX_CACHE = None
+
 def fetch_batch_live_prices(tickers):
-    """Fetches batch live prices for all tickers using yfinance in one fast request."""
+    """Fetches batch live prices for all tickers using yfinance in one fast request with dead man's switch tracking."""
+    global LAST_SUCCESSFUL_FETCH_TIMESTAMP, CONSECUTIVE_FETCH_FAILURES
     current_prices = {}
     try:
         data = yf.download(tickers, period="1d", interval="1m", progress=False)
@@ -62,6 +80,13 @@ def fetch_batch_live_prices(tickers):
                     current_prices[t] = float(hist["Close"].iloc[-1])
             except Exception as err:
                 print(f"[Quote Fallback Error] {t}: {err}")
+
+    if current_prices and len(current_prices) > 0:
+        LAST_SUCCESSFUL_FETCH_TIMESTAMP = time.time()
+        CONSECUTIVE_FETCH_FAILURES = 0
+    else:
+        CONSECUTIVE_FETCH_FAILURES += 1
+        print(f"[Fetch Warning] Price fetch failed. Consecutive failures: {CONSECUTIVE_FETCH_FAILURES}")
                 
     return current_prices
 
@@ -188,18 +213,63 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
         risk = RiskAgent(stop_loss_pct=0.05, take_profit_pct=0.05, max_allocation_pct=0.10, trailing_stop_loss_pct=0.05)
         max_rsi_allowed = 65.0
 
+    # Initialize PortfolioRiskAgent (gating sector concentration & correlation exposure)
+    portfolio_risk = PortfolioRiskAgent(max_sector_exposure=0.35, max_correlated_exposure=0.05)
+
+    # Preload / Cache 60-day correlation matrix
+    global CORRELATION_MATRIX_CACHE
+    if CORRELATION_MATRIX_CACHE is None or (isinstance(CORRELATION_MATRIX_CACHE, pd.DataFrame) and CORRELATION_MATRIX_CACHE.empty):
+        try:
+            CORRELATION_MATRIX_CACHE = compute_60d_correlation_matrix(tickers, data_dir=data_dir)
+            if not CORRELATION_MATRIX_CACHE.empty:
+                print(f"  [Correlation Matrix] Preloaded 60-day correlation matrix ({len(CORRELATION_MATRIX_CACHE)} tickers).")
+        except Exception as err:
+            print(f"  [Correlation Matrix Error] {err}")
+            CORRELATION_MATRIX_CACHE = pd.DataFrame()
+
     # 2. Fallback/Safety model training
     if strategy is None:
         print("Initializing Strategy Agent (ML Brain) in fallback mode...")
         strategy = StrategyAgent(tickers, data_dir=data_dir)
         strategy.train_model()
 
-    # 3. Fetch latest quotes in one fast batch request for all 10 tickers
+    # 3. Fetch latest quotes in one fast batch request for all tickers
     current_prices = fetch_batch_live_prices(tickers)
 
     if not current_prices:
         print("Warning: No quotes available. Skipping this tick.")
         return
+
+    # Dead Man's Switch Check: Stale data or consecutive fetch failures
+    is_stale_data = False
+    now_ts = time.time()
+    if LAST_SUCCESSFUL_FETCH_TIMESTAMP is not None:
+        time_since_fetch = now_ts - LAST_SUCCESSFUL_FETCH_TIMESTAMP
+        if time_since_fetch > 300 or CONSECUTIVE_FETCH_FAILURES >= 5:
+            is_stale_data = True
+            print(f"[FAILSAFE ACTIVATED: Stale Data] Consecutive fetch failures ({CONSECUTIVE_FETCH_FAILURES}) or staleness ({time_since_fetch:.1f}s) exceeded 300 seconds. Blocking order execution.")
+    elif CONSECUTIVE_FETCH_FAILURES >= 5:
+        is_stale_data = True
+        print(f"[FAILSAFE ACTIVATED: Stale Data] Consecutive fetch failures ({CONSECUTIVE_FETCH_FAILURES}) exceeded threshold. Blocking order execution.")
+
+    # Daily Drawdown Circuit Breaker Tracking
+    today_date_str = datetime.datetime.now().strftime('%Y-%m-%d')
+    total_current_val = execution.get_portfolio_value(current_prices)
+    
+    if profile_id not in PORTFOLIO_DAY_START_TRACKER or PORTFOLIO_DAY_START_TRACKER[profile_id].get("date") != today_date_str:
+        PORTFOLIO_DAY_START_TRACKER[profile_id] = {
+            "date": today_date_str,
+            "start_val": total_current_val
+        }
+        print(f"  [Circuit Breaker Baseline] Recorded day-start valuation for {profile_id}: INR {total_current_val:,.2f}")
+
+    day_start_val = PORTFOLIO_DAY_START_TRACKER[profile_id]["start_val"]
+    daily_drawdown = (total_current_val - day_start_val) / day_start_val if day_start_val > 0 else 0.0
+
+    halt_new_entries_for_session = False
+    if daily_drawdown < -0.05:
+        halt_new_entries_for_session = True
+        print(f"⚠️ [CIRCUIT BREAKER ACTIVATED] Daily Drawdown limit exceeded ({daily_drawdown:.2%}). Halting new entries for the session.")
 
     # Use current datetime stamp for trade logs
     today_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -464,45 +534,66 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             print(f"  [DEBUG BUY] ticker={ticker} | signal_val={signal_val} | confidence={confidence:.4f} | threshold={required_threshold:.4f} | can_buy={can_buy} | is_averaging_down={is_averaging_down}")
             
             if signal_val == 1 and confidence >= required_threshold and can_buy:
-                # Run Live Sentiment override check
-                sentiment_score = fetch_sentiment_score(ticker)
-                print(f"  [Sentiment Agent] Ticker: {ticker} | Sentiment: {sentiment_score:+.2f}")
-                if sentiment_score < -0.2:
-                    print(f"  [Sentiment Block] Blocked BUY signal for {ticker} due to bearish news sentiment ({sentiment_score:+.2f})")
+                if is_stale_data:
+                    print(f"  [Dead Man's Switch Block] BUY signal for {ticker} blocked: [FAILSAFE ACTIVATED: Stale Data]")
+                elif halt_new_entries_for_session:
+                    print(f"  [Circuit Breaker Block] BUY signal for {ticker} blocked: Daily session drawdown ({daily_drawdown:.2%}) breached -5.0%.")
                 else:
-                    is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=2)
-                    print(f"  [DEBUG BUY] cooldown={is_cooldown}")
-                    if not is_cooldown:
-                        total_port_val = execution.get_portfolio_value(current_prices)
-                        
-                        b = risk.take_profit_pct / max(risk.trailing_stop_loss_pct, 0.001)
-                        f = confidence - (1.0 - confidence) / b
-                        f_kelly = max(0.02, min(0.5 * f, 0.20))
-                        
-                        allocation = risk.calculate_kelly_allocation(
-                            confidence,
-                            tp_pct=risk.take_profit_pct,
-                            sl_pct=risk.trailing_stop_loss_pct,
-                            total_portfolio_value=total_port_val,
-                            available_cash=execution.current_cash
-                        )
-                        print(f"  [KELLY SIZING] Confidence: {confidence:.1%} | Kelly Fraction: {f_kelly:.1%} | Target Allocation: INR {allocation:,.2f}")
-                        if allocation > 0:
-                            t_row = features_df
-                            atr_val = float(t_row["ATR"].iloc[-1]) if ("ATR" in t_row.columns and not pd.isna(t_row["ATR"].iloc[-1])) else (0.015 * current_price)
-                            vol_val = float(t_row["Volume_20SMA"].iloc[-1]) if ("Volume_20SMA" in t_row.columns and not pd.isna(t_row["Volume_20SMA"].iloc[-1])) else 1000000.0
-                            execution.buy_asset(
-                                ticker, 
-                                today_str, 
-                                current_price, 
-                                allocation, 
-                                atr_14=atr_val, 
-                                avg_volume_20=vol_val,
-                                kelly_fraction=f_kelly,
-                                confidence_score=confidence
-                            )
+                    # Run Live Sentiment override check
+                    sentiment_score = fetch_sentiment_score(ticker)
+                    print(f"  [Sentiment Agent] Ticker: {ticker} | Sentiment: {sentiment_score:+.2f}")
+                    if sentiment_score < -0.2:
+                        print(f"  [Sentiment Block] Blocked BUY signal for {ticker} due to bearish news sentiment ({sentiment_score:+.2f})")
                     else:
-                        print(f"  Buy signal ignored: {ticker} is in cooldown block.")
+                        is_cooldown = execution.is_in_cooldown(ticker, today_str, cooldown_days=2)
+                        print(f"  [DEBUG BUY] cooldown={is_cooldown}")
+                        if not is_cooldown:
+                            total_port_val = execution.get_portfolio_value(current_prices)
+                            
+                            b = risk.take_profit_pct / max(risk.trailing_stop_loss_pct, 0.001)
+                            f = confidence - (1.0 - confidence) / b
+                            f_kelly = max(0.02, min(0.5 * f, 0.20))
+                            proposed_trade_val = total_port_val * f_kelly
+                            trade_sector = TICKER_SECTORS.get(ticker, "Other")
+
+                            # Gate trade allocation with PortfolioRiskAgent BEFORE calculate_kelly_allocation
+                            is_port_safe, port_reject_reason = portfolio_risk.check_portfolio_risk(
+                                open_positions=execution.active_positions,
+                                new_trade_ticker=ticker,
+                                new_trade_sector=trade_sector,
+                                new_trade_value=proposed_trade_val,
+                                total_portfolio_value=total_port_val,
+                                correlation_matrix=CORRELATION_MATRIX_CACHE,
+                                current_prices=current_prices
+                            )
+
+                            if not is_port_safe:
+                                print(f"  [PortfolioRiskAgent Block] Trade rejected for {ticker}: {port_reject_reason}")
+                            else:
+                                allocation = risk.calculate_kelly_allocation(
+                                    confidence,
+                                    tp_pct=risk.take_profit_pct,
+                                    sl_pct=risk.trailing_stop_loss_pct,
+                                    total_portfolio_value=total_port_val,
+                                    available_cash=execution.current_cash
+                                )
+                                print(f"  [KELLY SIZING] Confidence: {confidence:.1%} | Kelly Fraction: {f_kelly:.1%} | Target Allocation: INR {allocation:,.2f}")
+                                if allocation > 0:
+                                    t_row = features_df
+                                    atr_val = float(t_row["ATR"].iloc[-1]) if ("ATR" in t_row.columns and not pd.isna(t_row["ATR"].iloc[-1])) else (0.015 * current_price)
+                                    vol_val = float(t_row["Volume_20SMA"].iloc[-1]) if ("Volume_20SMA" in t_row.columns and not pd.isna(t_row["Volume_20SMA"].iloc[-1])) else 1000000.0
+                                    execution.buy_asset(
+                                        ticker, 
+                                        today_str, 
+                                        current_price, 
+                                        allocation, 
+                                        atr_14=atr_val, 
+                                        avg_volume_20=vol_val,
+                                        kelly_fraction=f_kelly,
+                                        confidence_score=confidence
+                                    )
+                        else:
+                            print(f"  Buy signal ignored: {ticker} is in cooldown block.")
 
         except Exception as e:
             print(f"Error predicting signal for {ticker}: {e}")

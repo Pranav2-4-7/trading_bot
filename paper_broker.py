@@ -207,7 +207,142 @@ class ExecutionAgent:
         for ticker, position in self.active_positions.items():
             price = current_prices_dict.get(ticker, position["entry_price"])
             value += position["shares"] * price
-        return value
+# Sector mapping across all 20 watchlist tickers
+TICKER_SECTORS = {
+    # Core Leaders
+    'RELIANCE.NS': 'Energy',
+    'TCS.NS': 'Technology',
+    'INFY.NS': 'Technology',
+    'WIPRO.NS': 'Technology',
+    'HDFCBANK.NS': 'Banking',
+    'ICICIBANK.NS': 'Banking',
+    'SBIN.NS': 'Banking',
+    'BHARTIARTL.NS': 'Telecom',
+    'ITC.NS': 'FMCG',
+    'LT.NS': 'Industrials',
+    # Pharma Leaders
+    'SUNPHARMA.NS': 'Pharma',
+    'CIPLA.NS': 'Pharma',
+    'DRREDDY.NS': 'Pharma',
+    'DIVISLAB.NS': 'Pharma',
+    'LUPIN.NS': 'Pharma',
+    # Sugar Leaders
+    'BALRAMCHIN.NS': 'Sugar',
+    'EIDPARRY.NS': 'Sugar',
+    'RENUKA.NS': 'Sugar',
+    'TRIVENI.NS': 'Sugar',
+    'DALMIASUG.NS': 'Sugar'
+}
+
+
+class PortfolioRiskAgent:
+    """Agent responsible for gating trade allocations based on portfolio-level risk constraints."""
+    def __init__(self, max_sector_exposure=0.35, max_correlated_exposure=0.05):
+        self.max_sector_exposure = max_sector_exposure
+        self.max_correlated_exposure = max_correlated_exposure
+
+    def check_portfolio_risk(self, open_positions, new_trade_ticker, new_trade_sector, new_trade_value, total_portfolio_value, correlation_matrix=None, current_prices=None):
+        """
+        Gates trade allocation before RiskAgent.calculate_kelly_allocation is invoked.
+        
+        Args:
+            open_positions (dict): Active positions dictionary.
+            new_trade_ticker (str): Ticker for the proposed new trade.
+            new_trade_sector (str): Sector of the proposed trade (e.g. 'Pharma', 'Sugar', 'Technology').
+            new_trade_value (float): Proposed INR allocation value for the trade.
+            total_portfolio_value (float): Current net liquidation value of the portfolio.
+            correlation_matrix (dict or pd.DataFrame, optional): Preloaded 60-day correlation dictionary/matrix.
+            current_prices (dict, optional): Current live prices for positions.
+            
+        Returns:
+            tuple: (is_approved: bool, rejection_reason: str or None)
+        """
+        if total_portfolio_value <= 0:
+            return True, None
+
+        current_prices = current_prices or {}
+
+        # 1. Check Sector Concentration: (current_sector_exposure + new_trade_value) / total_portfolio_value > 0.35
+        current_sector_exposure = 0.0
+        for ticker, pos in open_positions.items():
+            if ticker == new_trade_ticker:
+                continue
+            pos_sector = TICKER_SECTORS.get(ticker, "Other")
+            if pos_sector == new_trade_sector:
+                price = current_prices.get(ticker, pos.get("entry_price", 0.0))
+                current_sector_exposure += pos.get("shares", 0) * price
+
+        proposed_sector_exposure = current_sector_exposure + new_trade_value
+        proposed_sector_ratio = proposed_sector_exposure / total_portfolio_value
+
+        if proposed_sector_ratio > self.max_sector_exposure:
+            return False, f"Sector Concentration Limit Exceeded: {new_trade_sector} exposure would reach {proposed_sector_ratio:.1%} (Max: {self.max_sector_exposure:.1%})"
+
+        # 2. Check Pairwise Correlation Exposure: weighted correlated exposure against active holdings
+        if correlation_matrix is not None and len(open_positions) > 0:
+            w_new = new_trade_value / total_portfolio_value
+            weighted_corr_exposure = 0.0
+
+            for ticker, pos in open_positions.items():
+                if ticker == new_trade_ticker:
+                    continue
+                price = current_prices.get(ticker, pos.get("entry_price", 0.0))
+                pos_val = pos.get("shares", 0) * price
+                w_i = pos_val / total_portfolio_value
+
+                # Look up correlation between new_trade_ticker and active holding
+                corr = 0.0
+                if isinstance(correlation_matrix, pd.DataFrame):
+                    if new_trade_ticker in correlation_matrix.index and ticker in correlation_matrix.columns:
+                        corr = float(correlation_matrix.loc[new_trade_ticker, ticker])
+                elif isinstance(correlation_matrix, dict):
+                    if new_trade_ticker in correlation_matrix and isinstance(correlation_matrix[new_trade_ticker], dict):
+                        corr = float(correlation_matrix[new_trade_ticker].get(ticker, 0.0))
+                    elif (new_trade_ticker, ticker) in correlation_matrix:
+                        corr = float(correlation_matrix[(new_trade_ticker, ticker)])
+                    elif (ticker, new_trade_ticker) in correlation_matrix:
+                        corr = float(correlation_matrix[(ticker, new_trade_ticker)])
+
+                # Accumulate positive correlation exposure
+                if corr > 0:
+                    weighted_corr_exposure += w_i * w_new * corr
+
+            if weighted_corr_exposure > self.max_correlated_exposure:
+                return False, f"Pairwise Correlation Exposure Limit Exceeded: Correlated exposure {weighted_corr_exposure:.4f} > Max {self.max_correlated_exposure:.4f}"
+
+        return True, None
+
+
+def compute_60d_correlation_matrix(tickers=None, data_dir="data"):
+    """Computes or loads the 60-day price return correlation matrix across active tickers."""
+    tickers = tickers or list(TICKER_SECTORS.keys())
+    close_series = {}
+
+    candidates = [
+        data_dir,
+        os.path.join(os.path.dirname(__file__), "data"),
+        os.path.join(os.path.dirname(__file__), "..", "data"),
+        "data"
+    ]
+
+    for ticker in tickers:
+        for c in candidates:
+            feat_file = os.path.join(c, f"{ticker}_features.csv")
+            raw_file = os.path.join(c, f"{ticker}_raw.csv")
+            target_f = feat_file if os.path.exists(feat_file) else (raw_file if os.path.exists(raw_file) else None)
+            if target_f:
+                try:
+                    df = pd.read_csv(target_f)
+                    if "Close" in df.columns:
+                        close_series[ticker] = df["Close"].tail(60).reset_index(drop=True)
+                        break
+                except Exception:
+                    pass
+
+    if len(close_series) >= 2:
+        price_df = pd.DataFrame(close_series)
+        return price_df.pct_change().dropna().corr()
+    return pd.DataFrame()
 
 
 class RiskAgent:
