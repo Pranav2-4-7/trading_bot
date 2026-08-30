@@ -159,18 +159,131 @@ def get_daily_sma50(ticker):
         print(f"Error fetching daily SMA for {ticker}: {e}")
         return None
 
-def calculate_dynamic_threshold(current_price, dma_200, base_threshold):
-    """Calculates a dynamic confidence threshold based on the 200 DMA drop."""
+BENCHMARK_CACHE = {}
+
+def get_benchmark_dataframe(benchmark_symbol="^NSEI", period="1y", interval="1d"):
+    """Fetches benchmark OHLCV data (e.g. NIFTY 50) and computes 200 MA and ATR Ratio."""
+    global BENCHMARK_CACHE
+    if benchmark_symbol in BENCHMARK_CACHE:
+        return BENCHMARK_CACHE[benchmark_symbol]
+        
+    try:
+        df = yf.download(benchmark_symbol, period=period, interval=interval, progress=False)
+        if isinstance(df.columns, pd.MultiIndex):
+            df.columns = df.columns.get_level_values(0)
+            
+        if not df.empty and "Close" in df.columns:
+            # 200 DMA
+            df["MA200"] = df["Close"].rolling(window=200, min_periods=1).mean()
+            
+            # ATR (14-period)
+            high_low = df["High"] - df["Low"]
+            high_close = (df["High"] - df["Close"].shift(1)).abs()
+            low_close = (df["Low"] - df["Close"].shift(1)).abs()
+            true_range = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            df["ATR"] = true_range.rolling(window=14, min_periods=1).mean()
+            df["ATR_Ratio"] = df["ATR"] / df["Close"]
+            
+            BENCHMARK_CACHE[benchmark_symbol] = df
+            return df
+    except Exception as e:
+        print(f"[Benchmark Fetch Error] {e}")
+        
+    return None
+
+def get_market_regime(benchmark_df=None, watchlist_dfs=None):
+    """
+    Tri-factor majority-vote market regime classifier.
+    
+    Signals:
+      1. Trend: benchmark_close > benchmark_ma200
+      2. Volatility: benchmark_atr_ratio < rolling_mean(benchmark_atr_ratio, 60)
+      3. Breadth: Percentage of watchlist stocks trading above individual 200 DMAs > 0.50
+      
+    Returns:
+      str: 'RISK_ON' if at least 2 of 3 signals are True; otherwise 'RISK_OFF'.
+    """
+    # Signal 1 (Trend) & Signal 2 (Volatility) defaults
+    signal_1 = True
+    signal_2 = True
+    
+    if benchmark_df is None or (isinstance(benchmark_df, pd.DataFrame) and benchmark_df.empty):
+        benchmark_df = get_benchmark_dataframe()
+        
+    if benchmark_df is not None and isinstance(benchmark_df, pd.DataFrame) and not benchmark_df.empty and "Close" in benchmark_df.columns:
+        # Signal 1: Trend
+        b_close = float(benchmark_df["Close"].iloc[-1])
+        if "MA200" in benchmark_df.columns and not pd.isna(benchmark_df["MA200"].iloc[-1]):
+            b_ma200 = float(benchmark_df["MA200"].iloc[-1])
+        else:
+            b_ma200 = float(benchmark_df["Close"].rolling(window=200, min_periods=1).mean().iloc[-1])
+        signal_1 = bool(b_close > b_ma200)
+
+        # Signal 2: Volatility
+        if "ATR_Ratio" in benchmark_df.columns:
+            atr_ratio_series = benchmark_df["ATR_Ratio"].dropna()
+        elif "ATR" in benchmark_df.columns:
+            atr_ratio_series = (benchmark_df["ATR"] / benchmark_df["Close"]).dropna()
+        else:
+            high_low = benchmark_df["High"] - benchmark_df["Low"]
+            high_close = (benchmark_df["High"] - benchmark_df["Close"].shift(1)).abs()
+            low_close = (benchmark_df["Low"] - benchmark_df["Close"].shift(1)).abs()
+            tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+            atr = tr.rolling(window=14, min_periods=1).mean()
+            atr_ratio_series = (atr / benchmark_df["Close"]).dropna()
+
+        if not atr_ratio_series.empty:
+            curr_atr_ratio = float(atr_ratio_series.iloc[-1])
+            rolling_window = min(60, len(atr_ratio_series))
+            rolling_atr_mean = float(atr_ratio_series.rolling(window=rolling_window, min_periods=1).mean().iloc[-1])
+            signal_2 = bool(curr_atr_ratio < rolling_atr_mean)
+
+    # Signal 3 (Breadth): % of watchlist stocks above their individual 200 DMAs > 0.50
+    signal_3 = True
+    if watchlist_dfs is not None:
+        above_count = 0
+        total_valid = 0
+        
+        dfs_iter = watchlist_dfs.values() if isinstance(watchlist_dfs, dict) else watchlist_dfs
+        for item in dfs_iter:
+            if isinstance(item, pd.DataFrame) and not item.empty and "Close" in item.columns:
+                c_price = float(item["Close"].iloc[-1])
+                if "MA200" in item.columns and not pd.isna(item["MA200"].iloc[-1]):
+                    c_ma200 = float(item["MA200"].iloc[-1])
+                else:
+                    c_ma200 = float(item["Close"].rolling(window=200, min_periods=1).mean().iloc[-1])
+                if c_price > c_ma200:
+                    above_count += 1
+                total_valid += 1
+
+        if total_valid > 0:
+            breadth_ratio = above_count / total_valid
+            signal_3 = bool(breadth_ratio > 0.50)
+            print(f"  [Regime Breadth] {above_count}/{total_valid} ({breadth_ratio:.1%}) stocks above 200 DMA.")
+
+    # Majority vote
+    votes = sum([int(signal_1), int(signal_2), int(signal_3)])
+    regime = "RISK_ON" if votes >= 2 else "RISK_OFF"
+    print(f"  [Market Regime Classifier] Signals -> Trend: {signal_1}, Volatility: {signal_2}, Breadth: {signal_3} | Votes: {votes}/3 => Regime: {regime}")
+    return regime
+
+def calculate_dynamic_threshold(current_price, dma_200, base_threshold, regime="RISK_ON"):
+    """Calculates dynamic confidence threshold based on the 200 DMA drop and market regime."""
     if dma_200 is None or pd.isna(dma_200) or dma_200 <= 0:
-        return base_threshold
-        
-    if current_price >= dma_200:
-        return base_threshold
-        
-    drop_pct = (dma_200 - current_price) / dma_200
-    dynamic_threshold = base_threshold + (drop_pct * 1.5)
+        dynamic_threshold = base_threshold
+    elif current_price >= dma_200:
+        dynamic_threshold = base_threshold
+    else:
+        drop_pct = (dma_200 - current_price) / dma_200
+        dynamic_threshold = base_threshold + (drop_pct * 1.5)
+        print(f"  [MACRO FILTER] Stock below 200 DMA. Base: {base_threshold:.2f} | 200 DMA Adjusted: {dynamic_threshold:.2f}")
+
+    # When 'RISK_OFF', apply a 1.25x scaling multiplier to the dynamic entry confidence threshold
+    if regime == "RISK_OFF":
+        dynamic_threshold = dynamic_threshold * 1.25
+        print(f"  [REGIME FILTER: RISK_OFF] Applied 1.25x scaling multiplier -> Dynamic Threshold: {dynamic_threshold:.2f}")
+
     dynamic_threshold = min(dynamic_threshold, 0.85)
-    print(f"  [MACRO FILTER] Stock below 200 DMA. Base Threshold: {base_threshold:.2f} | Required Dynamic Threshold: {dynamic_threshold:.2f}")
     return dynamic_threshold
 
 def run_live_paper_trading(strategy=None, profile_id="macro"):
@@ -481,6 +594,8 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
 
     # 6. Strategy & Decision Execution: Process signals
     print("\n[Strategy Check] Evaluating model signals...")
+    market_regime = get_market_regime(watchlist_dfs=today_features)
+
     for ticker in tickers:
         if ticker not in today_features or ticker not in current_prices:
             continue
@@ -490,7 +605,7 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
 
         try:
             dma_200 = float(features_df["MA200"].iloc[-1]) if "MA200" in features_df.columns else None
-            required_threshold = calculate_dynamic_threshold(current_price, dma_200, target_buy_threshold)
+            required_threshold = calculate_dynamic_threshold(current_price, dma_200, target_buy_threshold, regime=market_regime)
 
             signal, proba = strategy.predict_signal(features_df)
             confidence = float(proba[0])
