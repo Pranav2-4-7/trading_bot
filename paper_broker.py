@@ -142,8 +142,34 @@ class ExecutionAgent:
                 return True
         return False
 
-    def place_buy_order(self, ticker, date, current_price, allocation, current_prices, risk_agent, atr_14=None, avg_volume_20=None, bid_ask_spread=None, kelly_fraction=None, confidence_score=None):
-        """Attempts to execute a buy order, invoking capital recycling if funds are insufficient for a high-conviction signal."""
+    def place_buy_order(self, ticker, date, current_price, allocation, current_prices, risk_agent, portfolio_risk_agent=None, atr_14=None, avg_volume_20=None, bid_ask_spread=None, kelly_fraction=None, confidence_score=None):
+        """Attempts to execute a buy order after validating portfolio risk gating and capital recycling."""
+        total_port_val = self.get_portfolio_value(current_prices)
+        
+        # Validate portfolio risk boundaries prior to computing share sizes
+        if risk_agent is not None and hasattr(risk_agent, "approve_order"):
+            approved, reason = risk_agent.approve_order(
+                open_positions=self.active_positions,
+                candidate_ticker=ticker,
+                target_inr=allocation,
+                total_portfolio_value=total_port_val,
+                portfolio_risk_agent=portfolio_risk_agent,
+                current_prices=current_prices
+            )
+            if not approved:
+                return False
+        elif portfolio_risk_agent is not None:
+            approved, reason = portfolio_risk_agent.check_portfolio_risk(
+                open_positions=self.active_positions,
+                candidate_ticker=ticker,
+                target_inr=allocation,
+                total_portfolio_value=total_port_val,
+                current_prices=current_prices
+            )
+            if not approved:
+                print(f"[PortfolioRiskAgent Rejection] Order for {ticker} blocked: {reason}")
+                return False
+
         if self.current_cash < allocation and confidence_score is not None:
             risk_agent.rebalance_for_high_conviction(self, allocation, confidence_score, current_prices, date)
             
@@ -207,6 +233,35 @@ class ExecutionAgent:
         for ticker, position in self.active_positions.items():
             price = current_prices_dict.get(ticker, position["entry_price"])
             value += position["shares"] * price
+        return value
+# Sector mapping across all 20 watchlist tickers
+TICKER_SECTORS = {
+    # Core Leaders
+    'RELIANCE.NS': 'Energy',
+    'TCS.NS': 'Technology',
+    'INFY.NS': 'Technology',
+    'WIPRO.NS': 'Technology',
+    'HDFCBANK.NS': 'Banking',
+    'ICICIBANK.NS': 'Banking',
+    'SBIN.NS': 'Banking',
+    'BHARTIARTL.NS': 'Telecom',
+    'ITC.NS': 'FMCG',
+    'LT.NS': 'Industrials',
+    # Pharma Leaders
+    'SUNPHARMA.NS': 'Pharma',
+    'CIPLA.NS': 'Pharma',
+    'DRREDDY.NS': 'Pharma',
+    'DIVISLAB.NS': 'Pharma',
+    'LUPIN.NS': 'Pharma',
+    # Sugar Leaders
+    'BALRAMCHIN.NS': 'Sugar',
+    'EIDPARRY.NS': 'Sugar',
+    'RENUKA.NS': 'Sugar',
+    'TRIVENI.NS': 'Sugar',
+    'DALMIASUG.NS': 'Sugar'
+}
+
+
 # Sector mapping across all 20 watchlist tickers
 TICKER_SECTORS = {
     # Core Leaders
@@ -236,84 +291,137 @@ TICKER_SECTORS = {
 
 
 class PortfolioRiskAgent:
-    """Agent responsible for gating trade allocations based on portfolio-level risk constraints."""
-    def __init__(self, max_sector_exposure=0.35, max_correlated_exposure=0.05):
+    """Agent responsible for gating trade allocations based on aggregate portfolio risk and cross-asset correlation."""
+    def __init__(self, correlation_file="data/correlation_matrix.json", max_sector_exposure=0.35, max_correlated_exposure=0.05):
+        self.MAX_SECTOR_EXPOSURE = max_sector_exposure
+        self.MAX_CORRELATED_EXPOSURE = max_correlated_exposure
         self.max_sector_exposure = max_sector_exposure
         self.max_correlated_exposure = max_correlated_exposure
+        
+        # Sector mapping for active watchlist
+        self.SECTOR_MAP = {
+            'Pharma': ['SUNPHARMA.NS', 'CIPLA.NS', 'DRREDDY.NS', 'DIVISLAB.NS', 'LUPIN.NS'],
+            'Sugar': ['BALRAMCHIN.NS', 'EIDPARRY.NS', 'RENUKA.NS', 'TRIVENI.NS', 'DALMIASUG.NS'],
+            'Technology': ['TCS.NS', 'INFY.NS', 'WIPRO.NS'],
+            'Banking': ['HDFCBANK.NS', 'ICICIBANK.NS', 'SBIN.NS'],
+            'Energy': ['RELIANCE.NS'],
+            'Telecom': ['BHARTIARTL.NS'],
+            'FMCG': ['ITC.NS'],
+            'Industrials': ['LT.NS']
+        }
+        
+        # Load correlation_matrix.json if it exists, defaulting to empty dict if absent
+        self.correlation_matrix = {}
+        candidate_paths = [
+            correlation_file,
+            os.path.join("data", "correlation_matrix.json"),
+            os.path.join(os.path.dirname(__file__), "data", "correlation_matrix.json"),
+            os.path.join(os.path.dirname(__file__), "..", "data", "correlation_matrix.json")
+        ]
+        for p in candidate_paths:
+            if os.path.exists(p):
+                try:
+                    import json
+                    with open(p, "r") as f:
+                        self.correlation_matrix = json.load(f)
+                    break
+                except Exception as e:
+                    print(f"[PortfolioRiskAgent] Warning: Could not load correlation file {p}: {e}")
 
-    def check_portfolio_risk(self, open_positions, new_trade_ticker, new_trade_sector, new_trade_value, total_portfolio_value, correlation_matrix=None, current_prices=None):
+    def get_ticker_sector(self, ticker):
+        """Returns the sector name for a given ticker."""
+        if ticker in TICKER_SECTORS:
+            return TICKER_SECTORS[ticker]
+        for sector, tickers in self.SECTOR_MAP.items():
+            if ticker in tickers:
+                return sector
+        return "Other"
+
+    def check_portfolio_risk(self, open_positions, candidate_ticker=None, target_inr=None, total_portfolio_value=None, 
+                             new_trade_ticker=None, new_trade_sector=None, new_trade_value=None, 
+                             correlation_matrix=None, current_prices=None):
         """
-        Gates trade allocation before RiskAgent.calculate_kelly_allocation is invoked.
+        Evaluates aggregate portfolio risk and cross-asset correlation before allocating capital.
         
         Args:
             open_positions (dict): Active positions dictionary.
-            new_trade_ticker (str): Ticker for the proposed new trade.
-            new_trade_sector (str): Sector of the proposed trade (e.g. 'Pharma', 'Sugar', 'Technology').
-            new_trade_value (float): Proposed INR allocation value for the trade.
+            candidate_ticker (str): Ticker for the proposed new trade.
+            target_inr (float): Proposed INR allocation value for the trade.
             total_portfolio_value (float): Current net liquidation value of the portfolio.
-            correlation_matrix (dict or pd.DataFrame, optional): Preloaded 60-day correlation dictionary/matrix.
             current_prices (dict, optional): Current live prices for positions.
+            correlation_matrix (dict or pd.DataFrame, optional): Preloaded 60-day correlation dictionary/matrix.
             
         Returns:
-            tuple: (is_approved: bool, rejection_reason: str or None)
+            tuple: (is_approved: bool, rejection_reason: str)
         """
-        if total_portfolio_value <= 0:
-            return True, None
+        ticker = candidate_ticker or new_trade_ticker
+        value = target_inr if target_inr is not None else (new_trade_value if new_trade_value is not None else 0.0)
+        tot_val = total_portfolio_value if total_portfolio_value is not None else 0.0
+
+        if tot_val <= 0:
+            return True, "Approved"
 
         current_prices = current_prices or {}
+        corr_data = correlation_matrix if correlation_matrix is not None else self.correlation_matrix
+        target_sector = new_trade_sector or self.get_ticker_sector(ticker)
 
-        # 1. Check Sector Concentration: (current_sector_exposure + new_trade_value) / total_portfolio_value > 0.35
-        current_sector_exposure = 0.0
-        for ticker, pos in open_positions.items():
-            if ticker == new_trade_ticker:
+        # 1. Sector Concentration Check: (current_sector_value + target_inr) / total_portfolio_value > MAX_SECTOR_EXPOSURE
+        current_sector_value = 0.0
+        for pos_ticker, pos in open_positions.items():
+            if pos_ticker == ticker:
                 continue
-            pos_sector = TICKER_SECTORS.get(ticker, "Other")
-            if pos_sector == new_trade_sector:
-                price = current_prices.get(ticker, pos.get("entry_price", 0.0))
-                current_sector_exposure += pos.get("shares", 0) * price
+            pos_sec = self.get_ticker_sector(pos_ticker)
+            if pos_sec == target_sector:
+                price = current_prices.get(pos_ticker, pos.get("entry_price", 0.0))
+                current_sector_value += pos.get("shares", 0) * price
 
-        proposed_sector_exposure = current_sector_exposure + new_trade_value
-        proposed_sector_ratio = proposed_sector_exposure / total_portfolio_value
+        proposed_sector_value = current_sector_value + value
+        proposed_sector_ratio = proposed_sector_value / tot_val
 
-        if proposed_sector_ratio > self.max_sector_exposure:
-            return False, f"Sector Concentration Limit Exceeded: {new_trade_sector} exposure would reach {proposed_sector_ratio:.1%} (Max: {self.max_sector_exposure:.1%})"
+        if proposed_sector_ratio > self.MAX_SECTOR_EXPOSURE:
+            reason = f"Sector exposure limit exceeded: {target_sector} exposure would reach {proposed_sector_ratio:.1%} (Max: {self.MAX_SECTOR_EXPOSURE:.1%})"
+            return False, reason
 
-        # 2. Check Pairwise Correlation Exposure: weighted correlated exposure against active holdings
-        if correlation_matrix is not None and len(open_positions) > 0:
-            w_new = new_trade_value / total_portfolio_value
-            weighted_corr_exposure = 0.0
+        # 2. Pairwise Correlation Check:
+        # Correlated Exposure = sum_i ( (Position Value_i / Total Portfolio Value) * max(0, rho_i,candidate) )
+        if corr_data and len(open_positions) > 0:
+            correlated_exposure = 0.0
 
-            for ticker, pos in open_positions.items():
-                if ticker == new_trade_ticker:
+            for pos_ticker, pos in open_positions.items():
+                if pos_ticker == ticker:
                     continue
-                price = current_prices.get(ticker, pos.get("entry_price", 0.0))
+                price = current_prices.get(pos_ticker, pos.get("entry_price", 0.0))
                 pos_val = pos.get("shares", 0) * price
-                w_i = pos_val / total_portfolio_value
+                weight_i = pos_val / tot_val
 
-                # Look up correlation between new_trade_ticker and active holding
-                corr = 0.0
-                if isinstance(correlation_matrix, pd.DataFrame):
-                    if new_trade_ticker in correlation_matrix.index and ticker in correlation_matrix.columns:
-                        corr = float(correlation_matrix.loc[new_trade_ticker, ticker])
-                elif isinstance(correlation_matrix, dict):
-                    if new_trade_ticker in correlation_matrix and isinstance(correlation_matrix[new_trade_ticker], dict):
-                        corr = float(correlation_matrix[new_trade_ticker].get(ticker, 0.0))
-                    elif (new_trade_ticker, ticker) in correlation_matrix:
-                        corr = float(correlation_matrix[(new_trade_ticker, ticker)])
-                    elif (ticker, new_trade_ticker) in correlation_matrix:
-                        corr = float(correlation_matrix[(ticker, new_trade_ticker)])
+                # Look up Pearson correlation coefficient rho between pos_ticker and candidate_ticker
+                rho = 0.0
+                if isinstance(corr_data, pd.DataFrame):
+                    if ticker in corr_data.index and pos_ticker in corr_data.columns:
+                        rho = float(corr_data.loc[ticker, pos_ticker])
+                    elif pos_ticker in corr_data.index and ticker in corr_data.columns:
+                        rho = float(corr_data.loc[pos_ticker, ticker])
+                elif isinstance(corr_data, dict):
+                    if ticker in corr_data and isinstance(corr_data[ticker], dict):
+                        rho = float(corr_data[ticker].get(pos_ticker, 0.0))
+                    elif pos_ticker in corr_data and isinstance(corr_data[pos_ticker], dict):
+                        rho = float(corr_data[pos_ticker].get(ticker, 0.0))
+                    elif (ticker, pos_ticker) in corr_data:
+                        rho = float(corr_data[(ticker, pos_ticker)])
+                    elif (pos_ticker, ticker) in corr_data:
+                        rho = float(corr_data[(pos_ticker, ticker)])
 
                 # Accumulate positive correlation exposure
-                if corr > 0:
-                    weighted_corr_exposure += w_i * w_new * corr
+                correlated_exposure += weight_i * max(0.0, rho)
 
-            if weighted_corr_exposure > self.max_correlated_exposure:
-                return False, f"Pairwise Correlation Exposure Limit Exceeded: Correlated exposure {weighted_corr_exposure:.4f} > Max {self.max_correlated_exposure:.4f}"
+            if correlated_exposure > self.MAX_CORRELATED_EXPOSURE:
+                reason = f"Portfolio correlation limit exceeded: Weighted correlated exposure {correlated_exposure:.4f} > Max {self.MAX_CORRELATED_EXPOSURE:.4f}"
+                return False, reason
 
-        return True, None
+        return True, "Approved"
 
 
-def compute_60d_correlation_matrix(tickers=None, data_dir="data"):
+def compute_60d_correlation_matrix(tickers=None, data_dir="data", save_json=True):
     """Computes or loads the 60-day price return correlation matrix across active tickers."""
     tickers = tickers or list(TICKER_SECTORS.keys())
     close_series = {}
@@ -341,7 +449,17 @@ def compute_60d_correlation_matrix(tickers=None, data_dir="data"):
 
     if len(close_series) >= 2:
         price_df = pd.DataFrame(close_series)
-        return price_df.pct_change().dropna().corr()
+        corr_df = price_df.pct_change().dropna().corr()
+        if save_json:
+            try:
+                import json
+                json_path = os.path.join(data_dir, "correlation_matrix.json")
+                os.makedirs(os.path.dirname(json_path) or ".", exist_ok=True)
+                with open(json_path, "w") as f:
+                    json.dump(corr_df.to_dict(), f, indent=4)
+            except Exception:
+                pass
+        return corr_df
     return pd.DataFrame()
 
 
@@ -352,6 +470,21 @@ class RiskAgent:
         self.take_profit_pct = take_profit_pct
         self.max_allocation_pct = max_allocation_pct
         self.trailing_stop_loss_pct = trailing_stop_loss_pct
+
+    def approve_order(self, open_positions, candidate_ticker, target_inr, total_portfolio_value, portfolio_risk_agent=None, current_prices=None):
+        """Runs PortfolioRiskAgent.check_portfolio_risk() prior to computing share sizes, logging the exact rejection reason if blocked."""
+        if portfolio_risk_agent is not None:
+            approved, reason = portfolio_risk_agent.check_portfolio_risk(
+                open_positions=open_positions,
+                candidate_ticker=candidate_ticker,
+                target_inr=target_inr,
+                total_portfolio_value=total_portfolio_value,
+                current_prices=current_prices
+            )
+            if not approved:
+                print(f"[PortfolioRiskAgent Rejection] Order for {candidate_ticker} blocked: {reason}")
+                return False, reason
+        return True, "Approved"
 
     def check_position_risk(self, ticker, current_price, entry_price, peak_price):
         """Checks if a position has breached trailing stop-loss, fixed stop-loss, or take-profit boundaries."""

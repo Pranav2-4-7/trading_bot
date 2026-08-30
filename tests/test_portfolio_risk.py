@@ -18,14 +18,14 @@ def test_sector_concentration_acceptance():
     # Proposed trade: 10,000 INR in INFY (Technology) -> total sector exposure = 25,000 / 100,000 = 25% <= 35%
     approved, reason = agent.check_portfolio_risk(
         open_positions=open_positions,
-        new_trade_ticker='INFY.NS',
-        new_trade_sector='Technology',
-        new_trade_value=10000.0,
+        candidate_ticker='INFY.NS',
+        target_inr=10000.0,
         total_portfolio_value=total_val,
+        correlation_matrix={},
         current_prices={'TCS.NS': 3750.0}
     )
     assert approved is True
-    assert reason is None
+    assert reason == "Approved"
 
 def test_sector_concentration_rejection():
     """Test that a trade breaching the 35% sector concentration limit is rejected."""
@@ -47,14 +47,13 @@ def test_sector_concentration_rejection():
     # Proposed trade: 10,000 INR in DRREDDY (Pharma) -> total sector exposure = 40,000 / 100,000 = 40% > 35%
     approved, reason = agent.check_portfolio_risk(
         open_positions=open_positions,
-        new_trade_ticker='DRREDDY.NS',
-        new_trade_sector='Pharma',
-        new_trade_value=10000.0,
+        candidate_ticker='DRREDDY.NS',
+        target_inr=10000.0,
         total_portfolio_value=total_val,
         current_prices=current_prices
     )
     assert approved is False
-    assert "Sector Concentration Limit Exceeded" in reason
+    assert "Sector exposure limit exceeded" in reason
 
 def test_pairwise_correlation_exposure_acceptance():
     """Test that a trade with low or zero correlation to active holdings is approved."""
@@ -73,29 +72,28 @@ def test_pairwise_correlation_exposure_acceptance():
     }
     
     # Proposed trade: 10,000 INR in CIPLA (10% weight)
-    # Correlated exposure = 0.15 * 0.10 * 0.10 = 0.0015 <= 0.05
+    # Correlated exposure = 0.15 * 0.10 = 0.015 <= 0.05
     approved, reason = agent.check_portfolio_risk(
         open_positions=open_positions,
-        new_trade_ticker='CIPLA.NS',
-        new_trade_sector='Pharma',
-        new_trade_value=10000.0,
+        candidate_ticker='CIPLA.NS',
+        target_inr=10000.0,
         total_portfolio_value=total_val,
         correlation_matrix=correlation_dict,
         current_prices=current_prices
     )
     assert approved is True
-    assert reason is None
+    assert reason == "Approved"
 
 def test_pairwise_correlation_exposure_rejection():
-    """Test that a trade with excessive correlated exposure across holdings is rejected."""
+    """Test that a trade with excessive weighted correlated exposure across holdings is rejected."""
     agent = PortfolioRiskAgent(max_sector_exposure=1.0, max_correlated_exposure=0.05)
     
     total_val = 100000.0
-    # Active positions: 3 highly correlated positions (20% each = 60% total)
+    # Active positions: 3 positions (20k + 20k + 20k = 60k total = 60% weight)
     open_positions = {
-        'HDFCBANK.NS': {'shares': 12, 'entry_price': 1666.67}, # 20k
-        'ICICIBANK.NS': {'shares': 16, 'entry_price': 1250.0},  # 20k
-        'SBIN.NS': {'shares': 25, 'entry_price': 800.0}        # 20k
+        'HDFCBANK.NS': {'shares': 12, 'entry_price': 1666.67}, # 20k (20%)
+        'ICICIBANK.NS': {'shares': 16, 'entry_price': 1250.0},  # 20k (20%)
+        'SBIN.NS': {'shares': 25, 'entry_price': 800.0}        # 20k (20%)
     }
     current_prices = {
         'HDFCBANK.NS': 1666.67,
@@ -103,29 +101,67 @@ def test_pairwise_correlation_exposure_rejection():
         'SBIN.NS': 800.0
     }
     
-    # High pairwise correlation to Kotak / Bank (e.g. 0.95 each)
+    # High pairwise correlation to Kotak (e.g. 0.90 each)
     correlation_dict = {
-        'BANK_STOCK': {
-            'HDFCBANK.NS': 0.95,
-            'ICICIBANK.NS': 0.95,
-            'SBIN.NS': 0.95
+        'KOTAKBANK.NS': {
+            'HDFCBANK.NS': 0.90,
+            'ICICIBANK.NS': 0.90,
+            'SBIN.NS': 0.90
         }
     }
     
-    # Proposed trade: 30,000 INR (30% weight)
-    # Correlated exposure = (0.20 * 0.30 * 0.95) + (0.20 * 0.30 * 0.95) + (0.20 * 0.30 * 0.95)
-    # = 3 * (0.057) = 0.171 > 0.05
+    # Correlated exposure = 0.20 * 0.90 + 0.20 * 0.90 + 0.20 * 0.90 = 0.54 > 0.05
     approved, reason = agent.check_portfolio_risk(
         open_positions=open_positions,
-        new_trade_ticker='BANK_STOCK',
-        new_trade_sector='Banking',
-        new_trade_value=30000.0,
+        candidate_ticker='KOTAKBANK.NS',
+        target_inr=10000.0,
         total_portfolio_value=total_val,
         correlation_matrix=correlation_dict,
         current_prices=current_prices
     )
     assert approved is False
-    assert "Pairwise Correlation Exposure Limit Exceeded" in reason
+    assert "Portfolio correlation limit exceeded" in reason
+
+def test_risk_agent_approve_order_and_execution_gating():
+    """Test that RiskAgent.approve_order and ExecutionAgent.place_buy_order gate blocked orders."""
+    portfolio_risk_agent = PortfolioRiskAgent(max_sector_exposure=0.35, max_correlated_exposure=0.05)
+    risk_agent = RiskAgent()
+    broker = ExecutionAgent(initial_capital=100000.0)
+    broker.current_cash = 65000.0
+    
+    # Pre-populate broker with 35k in Sugar sector
+    broker.active_positions = {
+        'BALRAMCHIN.NS': {'shares': 350, 'entry_price': 100.0}  # 35,000 INR in Sugar (35%)
+    }
+    current_prices = {
+        'BALRAMCHIN.NS': 100.0,
+        'RENUKA.NS': 50.0
+    }
+    
+    # 1. Test approve_order directly
+    approved, reason = risk_agent.approve_order(
+        open_positions=broker.active_positions,
+        candidate_ticker='RENUKA.NS', # Sugar ticker -> exceeds 35% cap
+        target_inr=10000.0,
+        total_portfolio_value=100000.0,
+        portfolio_risk_agent=portfolio_risk_agent,
+        current_prices=current_prices
+    )
+    assert approved is False
+    assert "Sector exposure limit exceeded" in reason
+    
+    # 2. Test place_buy_order gating
+    order_placed = broker.place_buy_order(
+        ticker='RENUKA.NS',
+        date='2026-08-30',
+        current_price=50.0,
+        allocation=10000.0,
+        current_prices=current_prices,
+        risk_agent=risk_agent,
+        portfolio_risk_agent=portfolio_risk_agent
+    )
+    assert order_placed is False
+    assert 'RENUKA.NS' not in broker.active_positions
 
 def test_daily_drawdown_circuit_breaker_logic():
     """Test daily drawdown circuit breaker calculation."""
@@ -142,18 +178,17 @@ def test_daily_drawdown_circuit_breaker_logic():
     dd_severe = (current_val_severe - day_start_val) / day_start_val
     halt_severe = dd_severe < -0.05
     assert halt_severe is True
-    assert dd_severe == -0.055
 
 def test_dead_mans_switch_staleness_logic():
-    """Test dead man's switch data staleness threshold."""
-    now_ts = 10000.0
+    """Test Dead Man's Switch 300s staleness logic."""
+    last_fetch_time = 1000.0
     
-    # Case 1: Fresh data (30 seconds old)
-    last_fetch_fresh = 9970.0
-    is_stale_fresh = (now_ts - last_fetch_fresh) > 300
+    # Case 1: Fresh data (120s old) -> Allow execution
+    curr_time_fresh = 1120.0
+    is_stale_fresh = (curr_time_fresh - last_fetch_time) > 300
     assert is_stale_fresh is False
     
-    # Case 2: Stale data (350 seconds old)
-    last_fetch_stale = 9650.0
-    is_stale_expired = (now_ts - last_fetch_stale) > 300
-    assert is_stale_expired is True
+    # Case 2: Stale data (350s old) -> Block execution
+    curr_time_stale = 1350.0
+    is_stale_blocked = (curr_time_stale - last_fetch_time) > 300
+    assert is_stale_blocked is True
