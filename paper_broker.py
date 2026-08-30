@@ -234,6 +234,15 @@ class ExecutionAgent:
             price = current_prices_dict.get(ticker, position["entry_price"])
             value += position["shares"] * price
         return value
+
+    def get_total_portfolio_value(self, current_prices_dict=None):
+        """Calculates current total portfolio value (cash + market value of holdings)."""
+        current_prices_dict = current_prices_dict or {}
+        value = self.current_cash
+        for ticker, position in self.active_positions.items():
+            price = current_prices_dict.get(ticker, position.get("entry_price", 0.0))
+            value += position["shares"] * price
+        return value
 # Sector mapping across all 20 watchlist tickers
 TICKER_SECTORS = {
     # Core Leaders

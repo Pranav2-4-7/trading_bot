@@ -365,24 +365,24 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
         is_stale_data = True
         print(f"[FAILSAFE ACTIVATED: Stale Data] Consecutive fetch failures ({CONSECUTIVE_FETCH_FAILURES}) exceeded threshold. Blocking order execution.")
 
-    # Daily Drawdown Circuit Breaker Tracking
+    # Aggregate Daily Drawdown Circuit Breaker Tracking
     today_date_str = datetime.datetime.now().strftime('%Y-%m-%d')
-    total_current_val = execution.get_portfolio_value(current_prices)
+    current_portfolio_value = execution.get_total_portfolio_value(current_prices)
     
     if profile_id not in PORTFOLIO_DAY_START_TRACKER or PORTFOLIO_DAY_START_TRACKER[profile_id].get("date") != today_date_str:
         PORTFOLIO_DAY_START_TRACKER[profile_id] = {
             "date": today_date_str,
-            "start_val": total_current_val
+            "start_val": current_portfolio_value
         }
-        print(f"  [Circuit Breaker Baseline] Recorded day-start valuation for {profile_id}: INR {total_current_val:,.2f}")
+        print(f"  [Circuit Breaker Baseline] Recorded session_start_portfolio_value for {profile_id}: INR {current_portfolio_value:,.2f}")
 
-    day_start_val = PORTFOLIO_DAY_START_TRACKER[profile_id]["start_val"]
-    daily_drawdown = (total_current_val - day_start_val) / day_start_val if day_start_val > 0 else 0.0
+    session_start_portfolio_value = PORTFOLIO_DAY_START_TRACKER[profile_id]["start_val"]
+    session_drawdown = (current_portfolio_value - session_start_portfolio_value) / session_start_portfolio_value if session_start_portfolio_value > 0 else 0.0
 
     halt_new_entries_for_session = False
-    if daily_drawdown < -0.05:
+    if session_drawdown <= -0.05:
         halt_new_entries_for_session = True
-        print(f"⚠️ [CIRCUIT BREAKER ACTIVATED] Daily Drawdown limit exceeded ({daily_drawdown:.2%}). Halting new entries for the session.")
+        print(f"⚠️ [CIRCUIT BREAKER TRIGGERED] Portfolio down {session_drawdown:.2%}. Halting all new buy orders for remainder of the session.")
 
     # Use current datetime stamp for trade logs
     today_str = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -652,7 +652,7 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                 if is_stale_data:
                     print(f"  [Dead Man's Switch Block] BUY signal for {ticker} blocked: [FAILSAFE ACTIVATED: Stale Data]")
                 elif halt_new_entries_for_session:
-                    print(f"  [Circuit Breaker Block] BUY signal for {ticker} blocked: Daily session drawdown ({daily_drawdown:.2%}) breached -5.0%.")
+                    print(f"  [Circuit Breaker Block] [CIRCUIT BREAKER TRIGGERED] Portfolio down {session_drawdown:.2%}. Halting all new buy orders for remainder of the session. Bypassing buy signal for {ticker}.")
                 else:
                     # Run Live Sentiment override check
                     sentiment_score = fetch_sentiment_score(ticker)

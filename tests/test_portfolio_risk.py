@@ -164,19 +164,29 @@ def test_risk_agent_approve_order_and_execution_gating():
     assert 'RENUKA.NS' not in broker.active_positions
 
 def test_daily_drawdown_circuit_breaker_logic():
-    """Test daily drawdown circuit breaker calculation."""
-    day_start_val = 100000.0
+    """Test aggregate daily drawdown circuit breaker calculation and broker method."""
+    broker = ExecutionAgent(initial_capital=100000.0)
+    broker.current_cash = 100000.0
+    
+    session_start_portfolio_value = broker.get_total_portfolio_value()
+    assert session_start_portfolio_value == 100000.0
     
     # Case 1: Minor drawdown (-2.5%) -> Normal operation
     current_val_normal = 97500.0
-    dd_normal = (current_val_normal - day_start_val) / day_start_val
-    halt_normal = dd_normal < -0.05
+    session_drawdown_normal = (current_val_normal - session_start_portfolio_value) / session_start_portfolio_value
+    halt_normal = session_drawdown_normal <= -0.05
     assert halt_normal is False
     
-    # Case 2: Severe intraday drop (-5.5%) -> Breaker triggered
+    # Case 2: Exact threshold (-5.0%) -> Breaker triggered
+    current_val_exact = 95000.0
+    session_drawdown_exact = (current_val_exact - session_start_portfolio_value) / session_start_portfolio_value
+    halt_exact = session_drawdown_exact <= -0.05
+    assert halt_exact is True
+
+    # Case 3: Severe intraday drop (-5.5%) -> Breaker triggered
     current_val_severe = 94500.0
-    dd_severe = (current_val_severe - day_start_val) / day_start_val
-    halt_severe = dd_severe < -0.05
+    session_drawdown_severe = (current_val_severe - session_start_portfolio_value) / session_start_portfolio_value
+    halt_severe = session_drawdown_severe <= -0.05
     assert halt_severe is True
 
 def test_dead_mans_switch_staleness_logic():
