@@ -19,21 +19,30 @@ def get_portfolio_path(filename: str) -> str:
 
 def generate_daily_gemini_bias():
     """Fetches recent global news via GDELT for Nifty 50 tickers, queries Gemini 2.5 Flash, and saves the bias scores."""
-    from news_ingestor import GlobalNewsIngestor
-    from gemini_analyzer import GeminiSentimentAnalyzer
-
     base_dir = os.path.dirname(os.path.abspath(__file__))
     load_dotenv(os.path.join(base_dir, ".env"))
 
-    from data_scraper import WATCHLIST, COMPANY_NAME_MAP
     # If GEMINI_API_KEY is not set, default all daily biases to 0.0
     if not os.environ.get("GEMINI_API_KEY"):
         print("[Gemini warning] GEMINI_API_KEY environment variable not set. Defaulting all daily biases to 0.0.")
-        default_bias = {t: 0.0 for t in WATCHLIST}
-        bias_file = os.path.join(base_dir, "..", "data", "daily_gemini_bias.json")
+        tickers = [
+            'RELIANCE.NS', 'TCS.NS', 'INFY.NS', 'HDFCBANK.NS', 'ICICIBANK.NS',
+            'SBIN.NS', 'BHARTIARTL.NS', 'ITC.NS', 'LT.NS', 'WIPRO.NS',
+            'SUNPHARMA.NS', 'CIPLA.NS', 'DRREDDY.NS', 'DIVISLAB.NS', 'LUPIN.NS',
+            'BALRAMCHIN.NS', 'EIDPARRY.NS', 'RENUKA.NS', 'TRIVENI.NS', 'DALMIASUG.NS'
+        ]
+        default_bias = {t: 0.0 for t in tickers}
+        data_dir = os.path.join(base_dir, "..", "data")
+        if not os.path.exists(data_dir):
+            os.makedirs(data_dir)
+        bias_file = os.path.join(data_dir, "daily_gemini_bias.json")
         with open(bias_file, "w") as f:
             json.dump(default_bias, f, indent=4)
         return
+
+    from news_ingestor import GlobalNewsIngestor
+    from gemini_analyzer import GeminiSentimentAnalyzer
+    from data_scraper import WATCHLIST, COMPANY_NAME_MAP
 
     print("Generating Daily Gemini Sentiment Bias Scores...")
     ingestor = GlobalNewsIngestor()
