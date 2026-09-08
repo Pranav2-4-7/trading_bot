@@ -14,7 +14,7 @@
     },
     {
       "id": "legacy",
-      "name": "📜 Legacy Account",
+      "name": "📜 Legacy Account (5-Year Macro Mirror)",
       "file": "live_paper_portfolio.json",
       "threshold": 0.57
     }
