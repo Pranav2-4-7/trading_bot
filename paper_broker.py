@@ -400,7 +400,23 @@ class ExecutionAgent:
                 print(f"[PortfolioRiskAgent Rejection] Order for {ticker} blocked: {reason}")
                 return False
 
-        if self.current_cash < allocation and confidence_score is not None:
+        tot_val = total_port_val if total_port_val > 0 else 100000.0
+        if (self.current_cash < 5000 or self.current_cash < 0.05 * tot_val) and confidence_score is not None:
+            if hasattr(risk_agent, "prune_worst_position"):
+                can_proceed = risk_agent.prune_worst_position(
+                    open_positions=self.active_positions,
+                    incoming_candidate_confidence=confidence_score,
+                    available_cash=self.current_cash,
+                    total_portfolio_value=tot_val,
+                    current_prices=current_prices,
+                    execution_agent=self,
+                    portfolio=self.portfolio,
+                    date=date
+                )
+                if not can_proceed and self.current_cash < allocation:
+                    print(f"[Liquidity Rejection] Insufficient liquidity and pruning not justified for {ticker}.")
+                    return False
+        elif self.current_cash < allocation and confidence_score is not None:
             risk_agent.rebalance_for_high_conviction(self, allocation, confidence_score, current_prices, date)
             
         return self.buy_asset(ticker, date, current_price, allocation, atr_14, avg_volume_20, bid_ask_spread, kelly_fraction, confidence_score)
@@ -821,6 +837,201 @@ class RiskAgent:
                     print(f"Warning: Cannot sell {weakest_ticker} because current price is missing.")
                     
         return execution_agent.current_cash
+
+    def prune_worst_position(self, open_positions, incoming_candidate_confidence, 
+                             available_cash=None, total_portfolio_value=None, 
+                             current_prices=None, execution_agent=None, portfolio=None, 
+                             date=None, portfolio_path="data/portfolio.json"):
+        """
+        Active liquidity recovery mechanism for cash-exhausted states (Cash < 5% Portfolio Value or Cash < 5000).
+        Identifies the position with the lowest unrealized PnL or lowest original confidence score.
+        If incoming_candidate_confidence >= weakest_position['confidence'] + 0.10:
+            Liquidates the weakest position at current market price.
+            Reclaims capital into portfolio['cash'].
+            Logs exact message and returns True.
+        Otherwise returns False.
+        """
+        # Support passing portfolio dict directly as open_positions
+        if isinstance(open_positions, dict) and "positions" in open_positions:
+            if portfolio is None:
+                portfolio = open_positions
+            open_positions = portfolio["positions"]
+            if available_cash is None:
+                available_cash = portfolio.get("cash", portfolio.get("current_cash"))
+
+        # Determine available cash
+        if available_cash is None:
+            if execution_agent is not None:
+                available_cash = execution_agent.current_cash
+            elif isinstance(portfolio, dict) and "cash" in portfolio:
+                available_cash = portfolio["cash"]
+            else:
+                available_cash = 0.0
+
+        # Normalize positions container to list of dicts
+        candidates = []
+        if isinstance(open_positions, dict):
+            items = list(open_positions.items())
+        elif isinstance(open_positions, list):
+            items = list(enumerate(open_positions))
+        else:
+            items = []
+
+        for key, pos in items:
+            if not isinstance(pos, dict):
+                continue
+            t = pos.get("ticker")
+            if not t and isinstance(key, str):
+                t = key
+                pos["ticker"] = t
+            if not t:
+                continue
+
+            entry_price = pos.get("entry_price", 0.0)
+            cp = (current_prices.get(t) if current_prices else None) or pos.get("current_price") or entry_price
+            pnl = (cp - entry_price) / entry_price if entry_price > 0 else 0.0
+
+            conf = pos.get("confidence")
+            if conf is None:
+                conf = pos.get("confidence_score", 0.57)
+            pos["confidence"] = conf
+            pos["confidence_score"] = conf
+            pos["unrealized_pnl"] = pnl
+            pos["_key"] = key
+            pos["_current_price"] = cp
+            candidates.append(pos)
+
+        # Determine total portfolio value
+        if total_portfolio_value is None:
+            if execution_agent is not None:
+                total_portfolio_value = execution_agent.get_portfolio_value(current_prices or {})
+            else:
+                tot = float(available_cash)
+                for c in candidates:
+                    qty = c.get("quantity", c.get("shares", 1))
+                    tot += qty * c["_current_price"]
+                total_portfolio_value = tot if tot > 0 else 100000.0
+
+        # Liquidity Check: Cash-exhausted state (Cash < 5000 or Cash < 0.05 * total_portfolio_value)
+        is_cash_exhausted = (available_cash < 5000) or (total_portfolio_value > 0 and available_cash < 0.05 * total_portfolio_value)
+        if not is_cash_exhausted:
+            # Liquidity is already sufficient
+            return True
+
+        if not candidates:
+            print("[PORTFOLIO PRUNING] Cash exhausted but no open positions available to prune.")
+            return False
+
+        # Identify candidate holding with lowest unrealized PnL or lowest original confidence score
+        pos_by_pnl = min(candidates, key=lambda p: (p["unrealized_pnl"], p["confidence"]))
+        pos_by_conf = min(candidates, key=lambda p: (p["confidence"], p["unrealized_pnl"]))
+
+        # Check which one qualifies with incoming_candidate_confidence >= candidate['confidence'] + 0.10
+        pnl_qualifies = incoming_candidate_confidence >= (pos_by_pnl["confidence"] + 0.10)
+        conf_qualifies = incoming_candidate_confidence >= (pos_by_conf["confidence"] + 0.10)
+
+        weakest_position = None
+        if pnl_qualifies and conf_qualifies:
+            # Both qualify: prioritize pruning the losing position or lower confidence
+            if pos_by_pnl["unrealized_pnl"] < 0:
+                weakest_position = pos_by_pnl
+            elif pos_by_conf["confidence"] < pos_by_pnl["confidence"]:
+                weakest_position = pos_by_conf
+            else:
+                weakest_position = pos_by_pnl
+        elif pnl_qualifies:
+            weakest_position = pos_by_pnl
+        elif conf_qualifies:
+            weakest_position = pos_by_conf
+
+        if weakest_position is None:
+            print(f"[PORTFOLIO PRUNING] Pruning rejected: Incoming candidate confidence ({incoming_candidate_confidence:.2f}) does not exceed weakest position threshold by at least +0.10. Maintaining existing holdings.")
+            return False
+
+        # Execute liquidation
+        weakest_ticker = weakest_position["ticker"]
+        weakest_pnl = weakest_position["unrealized_pnl"]
+        current_price = weakest_position["_current_price"]
+        quantity = weakest_position.get("quantity", weakest_position.get("shares", 1))
+
+        total_slippage = calculate_dynamic_slippage(
+            current_price,
+            quantity,
+            atr_14=weakest_position.get("atr_14"),
+            avg_volume_20=weakest_position.get("avg_volume_20"),
+            bid_ask_spread=weakest_position.get("bid_ask_spread")
+        )
+        slippage_cost = total_slippage * quantity
+        execution_price = current_price - total_slippage
+        brokerage_pct = weakest_position.get("brokerage_pct", 0.0012)
+        transaction_fees = (execution_price * quantity) * brokerage_pct
+        slippage_and_brokerage = slippage_cost + transaction_fees
+
+        net_proceeds = (current_price * quantity) - slippage_and_brokerage
+        cost_basis = weakest_position.get("entry_price", current_price) * quantity
+        realized_pnl = net_proceeds - cost_basis
+
+        # Reclaim capital into portfolio['cash']
+        if portfolio is not None:
+            portfolio["cash"] = portfolio.get("cash", 0.0) + net_proceeds
+            if "current_cash" in portfolio:
+                portfolio["current_cash"] = portfolio["cash"]
+
+        if execution_agent is not None:
+            execution_agent.current_cash += net_proceeds
+            if hasattr(execution_agent, "portfolio") and isinstance(execution_agent.portfolio, dict):
+                execution_agent.portfolio["cash"] = execution_agent.current_cash
+            execution_agent.cooldowns[weakest_ticker] = date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Remove from open_positions
+        key = weakest_position["_key"]
+        if isinstance(open_positions, dict):
+            if key in open_positions:
+                del open_positions[key]
+            elif weakest_ticker in open_positions:
+                del open_positions[weakest_ticker]
+        elif isinstance(open_positions, list):
+            if weakest_position in open_positions:
+                open_positions.remove(weakest_position)
+
+        if portfolio is not None and "positions" in portfolio and portfolio["positions"] is not open_positions:
+            if isinstance(portfolio["positions"], dict) and weakest_ticker in portfolio["positions"]:
+                del portfolio["positions"][weakest_ticker]
+
+        if execution_agent is not None and hasattr(execution_agent, "active_positions") and execution_agent.active_positions is not open_positions:
+            if weakest_ticker in execution_agent.active_positions:
+                del execution_agent.active_positions[weakest_ticker]
+
+        # Record closed trade
+        clean_record = {k: v for k, v in weakest_position.items() if not k.startswith("_")}
+        closed_record = {
+            **clean_record,
+            "ticker": weakest_ticker,
+            "quantity": quantity,
+            "shares": quantity,
+            "exit_price": current_price,
+            "fill_price": execution_price,
+            "pnl_pct": weakest_pnl,
+            "realized_pnl": realized_pnl,
+            "slippage_and_brokerage": slippage_and_brokerage,
+            "exit_reason": "PORTFOLIO_PRUNING",
+            "exit_date": date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        if portfolio is not None:
+            portfolio.setdefault("closed_trades", []).append(closed_record)
+            persist_portfolio(portfolio, portfolio_path)
+        elif execution_agent is not None:
+            if hasattr(execution_agent, "trade_log"):
+                execution_agent.trade_log.append(closed_record)
+            if hasattr(execution_agent, "portfolio") and isinstance(execution_agent.portfolio, dict):
+                execution_agent.portfolio.setdefault("closed_trades", []).append(closed_record)
+            execution_agent.save_state(execution_agent.portfolio_file or portfolio_path)
+
+        # Log exact required string
+        print(f"[PORTFOLIO PRUNING] Liquidated {weakest_position['ticker']} (PnL: {weakest_pnl:.2%}) to fund high-conviction candidate (Confidence: {incoming_candidate_confidence:.2f}).")
+
+        return True
 
 
 def run_paper_trading_simulation(initial_capital=100000.0, signals_file="data/generated_signals.csv"):

@@ -690,6 +690,19 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                             if not is_port_safe:
                                 print(f"  [PortfolioRiskAgent Block] Trade rejected for {ticker}: {port_reject_reason}")
                             else:
+                                # Active liquidity recovery check for cash-exhausted states
+                                if execution.current_cash < 5000 or (total_port_val > 0 and execution.current_cash < 0.05 * total_port_val):
+                                    risk.prune_worst_position(
+                                        open_positions=execution.active_positions,
+                                        incoming_candidate_confidence=confidence,
+                                        available_cash=execution.current_cash,
+                                        total_portfolio_value=total_port_val,
+                                        current_prices=current_prices,
+                                        execution_agent=execution,
+                                        portfolio=execution.portfolio,
+                                        date=today_str
+                                    )
+
                                 allocation = risk.calculate_kelly_allocation(
                                     confidence,
                                     tp_pct=risk.take_profit_pct,
