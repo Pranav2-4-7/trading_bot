@@ -26,7 +26,8 @@ from paper_broker import (
     RiskAgent, 
     PortfolioRiskAgent, 
     TICKER_SECTORS, 
-    compute_60d_correlation_matrix
+    compute_60d_correlation_matrix,
+    check_exits
 )
 from news_ingestor import GlobalNewsIngestor
 from sentiment_analyzer import FinBERTSentimentAnalyzer
@@ -352,6 +353,10 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
     if not current_prices:
         print("Warning: No quotes available. Skipping this tick.")
         return
+
+    # Unconditional exit evaluation: executed on every live scan iteration
+    # independent of available liquidity, new buy evaluations, or circuit breakers
+    execution.check_exits(current_prices)
 
     # Dead Man's Switch Check: Stale data or consecutive fetch failures
     is_stale_data = False

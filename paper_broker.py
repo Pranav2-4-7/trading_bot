@@ -1,57 +1,246 @@
+import json
+import logging
 import math
 import os
+from datetime import datetime
 import pandas as pd
+
+def calculate_dynamic_slippage(price, order_quantity, atr_14=None, avg_volume_20=None, bid_ask_spread=None):
+    """
+    Calculates dynamic liquidity- and volatility-based slippage.
+    
+    Args:
+        price (float): Asset current market price.
+        order_quantity (int or float): Number of shares in order.
+        atr_14 (float, optional): 14-period Average True Range.
+        avg_volume_20 (float, optional): 20-period Average Volume.
+        bid_ask_spread (float, optional): Bid-ask spread. If None, estimated as 2 bps (0.0002 * price).
+        
+    Returns:
+        float: Total price slippage penalty per share in currency units.
+    """
+    if price <= 0:
+        return 0.0
+    if bid_ask_spread is None or bid_ask_spread <= 0:
+        half_spread = 0.0002 * price
+    else:
+        half_spread = bid_ask_spread / 2.0
+
+    atr_val = atr_14 if (atr_14 is not None and atr_14 > 0) else (0.015 * price)
+    vol_val = avg_volume_20 if (avg_volume_20 is not None and avg_volume_20 > 0) else 1000000.0
+    qty_val = max(float(order_quantity), 1.0)
+
+    impact = 0.1 * atr_val * math.sqrt(qty_val / max(vol_val, 1.0))
+    total_slippage = half_spread + impact
+    return total_slippage
+
+
+def persist_portfolio(portfolio, filepath="data/portfolio.json"):
+    """Persists updated portfolio dictionary to disk as formatted JSON immediately."""
+    try:
+        folder = os.path.dirname(filepath)
+        if folder and not os.path.exists(folder):
+            os.makedirs(folder, exist_ok=True)
+        with open(filepath, "w") as f:
+            json.dump(portfolio, f, indent=4)
+        print(f"Portfolio state persisted to {filepath}")
+    except Exception as e:
+        print(f"Error persisting portfolio to {filepath}: {e}")
+
+
+def check_exits(current_market_prices, portfolio=None, portfolio_path="data/portfolio.json", date=None):
+    """
+    Evaluates Stop-Loss and Take-Profit exits unconditionally for all active positions.
+    
+    Args:
+        current_market_prices (dict): Mapping of ticker to current market price.
+        portfolio (dict, optional): Portfolio state dictionary containing 'cash', 'positions', 'closed_trades'.
+        portfolio_path (str): Filepath to persist updated state upon any closed trade.
+        date (str, optional): Exit timestamp string.
+        
+    Returns:
+        list: List of closed trade records from this evaluation.
+    """
+    if portfolio is None:
+        if os.path.exists(portfolio_path):
+            try:
+                with open(portfolio_path, "r") as f:
+                    portfolio = json.load(f)
+            except Exception as e:
+                print(f"[check_exits] Error loading {portfolio_path}: {e}")
+                portfolio = None
+        if portfolio is None:
+            fallback_dir = os.path.dirname(portfolio_path) or "data"
+            fallback_path = os.path.join(fallback_dir, "live_paper_portfolio.json")
+            if os.path.exists(fallback_path):
+                try:
+                    with open(fallback_path, "r") as f:
+                        fb = json.load(f)
+                    portfolio = {
+                        "cash": fb.get("cash", fb.get("current_cash", 100000.0)),
+                        "positions": fb.get("positions", fb.get("active_positions", {})),
+                        "closed_trades": fb.get("closed_trades", fb.get("trade_log", []))
+                    }
+                except Exception:
+                    portfolio = {"cash": 100000.0, "positions": {}, "closed_trades": []}
+            else:
+                portfolio = {"cash": 100000.0, "positions": {}, "closed_trades": []}
+
+    if "cash" not in portfolio:
+        portfolio["cash"] = portfolio.get("current_cash", 100000.0)
+    if "positions" not in portfolio:
+        portfolio["positions"] = portfolio.get("active_positions", {})
+    if "closed_trades" not in portfolio:
+        portfolio["closed_trades"] = portfolio.get("trade_log", [])
+
+    positions_container = portfolio["positions"]
+    if isinstance(positions_container, dict):
+        items_to_evaluate = list(positions_container.items())
+    elif isinstance(positions_container, list):
+        items_to_evaluate = list(enumerate(positions_container))
+    else:
+        items_to_evaluate = []
+
+    closed_in_iteration = []
+    exit_timestamp = date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    for key_or_idx, pos in items_to_evaluate:
+        if not isinstance(pos, dict):
+            continue
+
+        ticker = pos.get("ticker")
+        if not ticker and isinstance(key_or_idx, str):
+            ticker = key_or_idx
+            pos["ticker"] = ticker
+        if not ticker:
+            continue
+
+        current_price = current_market_prices.get(ticker)
+        if current_price is None or current_price <= 0:
+            msg = f"Warning: Market price for {ticker} is missing or zero. Skipping exit evaluation."
+            logging.warning(msg)
+            print(msg)
+            continue
+
+        entry_price = pos.get("entry_price")
+        if entry_price is None or entry_price <= 0:
+            msg = f"Warning: Entry price for {ticker} is missing or zero. Skipping exit evaluation."
+            logging.warning(msg)
+            print(msg)
+            continue
+
+        pnl_pct = (current_price - entry_price) / entry_price
+        quantity = pos.get("quantity", pos.get("shares", 0))
+        if quantity <= 0:
+            continue
+
+        stop_loss_pct = pos.get("stop_loss_pct", 0.03)
+        take_profit_pct = pos.get("take_profit_pct", 0.04)
+
+        is_stop_loss = pnl_pct <= -stop_loss_pct
+        is_take_profit = pnl_pct >= take_profit_pct
+
+        if is_stop_loss or is_take_profit:
+            exit_reason = "STOP_LOSS" if is_stop_loss else "TAKE_PROFIT"
+
+            total_slippage = calculate_dynamic_slippage(
+                current_price,
+                quantity,
+                atr_14=pos.get("atr_14"),
+                avg_volume_20=pos.get("avg_volume_20"),
+                bid_ask_spread=pos.get("bid_ask_spread")
+            )
+            slippage_cost = total_slippage * quantity
+            execution_price = current_price - total_slippage
+            brokerage_pct = pos.get("brokerage_pct", 0.0012)
+            transaction_fees = (execution_price * quantity) * brokerage_pct
+            slippage_and_brokerage = slippage_cost + transaction_fees
+
+            net_proceeds = (current_price * quantity) - slippage_and_brokerage
+            cost_basis = entry_price * quantity
+            realized_pnl = net_proceeds - cost_basis
+
+            # Update portfolio cash balance
+            portfolio["cash"] += net_proceeds
+            if "current_cash" in portfolio:
+                portfolio["current_cash"] = portfolio["cash"]
+
+            # Remove record from active positions
+            if isinstance(portfolio["positions"], dict):
+                if key_or_idx in portfolio["positions"]:
+                    del portfolio["positions"][key_or_idx]
+                elif ticker in portfolio["positions"]:
+                    del portfolio["positions"][ticker]
+            elif isinstance(portfolio["positions"], list):
+                if pos in portfolio["positions"]:
+                    portfolio["positions"].remove(pos)
+
+            closed_record = {
+                **pos,
+                "ticker": ticker,
+                "quantity": quantity,
+                "shares": quantity,
+                "entry_price": entry_price,
+                "exit_price": current_price,
+                "fill_price": execution_price,
+                "pnl_pct": pnl_pct,
+                "realized_pnl": realized_pnl,
+                "slippage_and_brokerage": slippage_and_brokerage,
+                "exit_reason": exit_reason,
+                "exit_date": exit_timestamp
+            }
+            portfolio.setdefault("closed_trades", []).append(closed_record)
+            if "trade_log" in portfolio and portfolio["trade_log"] is not portfolio["closed_trades"]:
+                portfolio["trade_log"].append(closed_record)
+
+            closed_in_iteration.append(closed_record)
+
+            if is_stop_loss:
+                print(f"[STOP-LOSS HIT] Closed {pos['ticker']} at INR {current_price:.2f} (Loss: {pnl_pct:.2%}).")
+            else:
+                print(f"[TAKE-PROFIT HIT] Closed {pos['ticker']} at INR {current_price:.2f} (Gain: {pnl_pct:.2%}).")
+
+            persist_portfolio(portfolio, portfolio_path)
+
+    return closed_in_iteration
+
 
 class ExecutionAgent:
     """Agent responsible for order execution, account balance management, and trade logging."""
-    def __init__(self, initial_capital=100000.0):
+    def __init__(self, initial_capital=100000.0, portfolio_file="data/portfolio.json"):
         self.initial_capital = initial_capital
         self.current_cash = initial_capital
         self.active_positions = {}  # {ticker: {entry_price: float, shares: int, entry_date: str}}
         self.cooldowns = {}         # {ticker: last_exit_date_str}
         self.trade_log = []
+        self.closed_trades = self.trade_log
+        self.portfolio_file = portfolio_file
         self.BROKERAGE_AND_TAXES_PCT = 0.0012 # ~0.12% fees
+        self.portfolio = {
+            "cash": self.current_cash,
+            "positions": self.active_positions,
+            "closed_trades": self.closed_trades
+        }
 
-    def calculate_dynamic_slippage(self, price, order_quantity, atr_14, avg_volume_20, bid_ask_spread=None):
-        """
-        Calculates dynamic liquidity- and volatility-based slippage.
-        
-        Args:
-            price (float): Asset current market price.
-            order_quantity (int or float): Number of shares in order.
-            atr_14 (float): 14-period Average True Range.
-            avg_volume_20 (float): 20-period Average Volume.
-            bid_ask_spread (float, optional): Bid-ask spread. If None, estimated as 2 bps (0.0002 * price).
-            
-        Returns:
-            float: Total price slippage penalty per share in currency units.
-        """
-        if bid_ask_spread is None or bid_ask_spread <= 0:
-            half_spread = 0.0002 * price
-        else:
-            half_spread = bid_ask_spread / 2.0
-
-        atr_val = atr_14 if (atr_14 is not None and atr_14 > 0) else (0.015 * price)
-        vol_val = avg_volume_20 if (avg_volume_20 is not None and avg_volume_20 > 0) else 1000000.0
-        qty_val = max(float(order_quantity), 1.0)
-
-        impact = 0.1 * atr_val * math.sqrt(qty_val / max(vol_val, 1.0))
-        total_slippage = half_spread + impact
-        return total_slippage
+    def calculate_dynamic_slippage(self, price, order_quantity, atr_14=None, avg_volume_20=None, bid_ask_spread=None):
+        """Calculates dynamic liquidity- and volatility-based slippage."""
+        return calculate_dynamic_slippage(price, order_quantity, atr_14, avg_volume_20, bid_ask_spread)
 
     def save_state(self, filepath="data/live_paper_portfolio.json"):
         """Saves current cash, positions, cooldowns, and trade log to a JSON file."""
-        import json
         folder = os.path.dirname(filepath)
         if folder and not os.path.exists(folder):
-            os.makedirs(folder)
+            os.makedirs(folder, exist_ok=True)
 
         state = {
             "initial_capital": self.initial_capital,
             "current_cash": self.current_cash,
+            "cash": self.current_cash,
             "active_positions": self.active_positions,
+            "positions": self.active_positions,
             "cooldowns": self.cooldowns,
-            "trade_log": self.trade_log
+            "trade_log": self.trade_log,
+            "closed_trades": self.closed_trades
         }
         with open(filepath, "w") as f:
             json.dump(state, f, indent=4)
@@ -59,7 +248,7 @@ class ExecutionAgent:
 
     def load_state(self, filepath="data/live_paper_portfolio.json"):
         """Loads cash, positions, cooldowns, and trade log from a JSON file."""
-        import json
+        self.portfolio_file = filepath
         if not os.path.exists(filepath):
             self.save_state(filepath)
             return
@@ -69,11 +258,43 @@ class ExecutionAgent:
         print(f"[Broker Load] Loaded state from {filepath}: {state}")
 
         self.initial_capital = state.get("initial_capital", self.initial_capital)
-        self.current_cash = state.get("current_cash", self.current_cash)
-        self.active_positions = state.get("active_positions", {})
+        self.current_cash = state.get("cash", state.get("current_cash", self.current_cash))
+        self.active_positions = state.get("positions", state.get("active_positions", {}))
         self.cooldowns = state.get("cooldowns", {})
-        self.trade_log = state.get("trade_log", [])
+        self.trade_log = state.get("closed_trades", state.get("trade_log", []))
+        self.closed_trades = self.trade_log
+        self.portfolio = {
+            "cash": self.current_cash,
+            "positions": self.active_positions,
+            "closed_trades": self.closed_trades
+        }
         print(f"Portfolio state loaded from {filepath}")
+
+    def check_exits(self, current_market_prices, portfolio_path="data/portfolio.json", date=None):
+        """
+        Executes unconditional exit evaluation for active positions.
+        """
+        self.portfolio["cash"] = self.current_cash
+        self.portfolio["positions"] = self.active_positions
+        self.portfolio["closed_trades"] = self.closed_trades
+
+        closed_trades = check_exits(current_market_prices, portfolio=self.portfolio, portfolio_path=portfolio_path, date=date)
+
+        self.current_cash = self.portfolio["cash"]
+        self.active_positions = self.portfolio["positions"]
+        self.trade_log = self.portfolio["closed_trades"]
+        self.closed_trades = self.trade_log
+
+        for trade in closed_trades:
+            ticker = trade.get("ticker")
+            exit_date = trade.get("exit_date", date or datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            if ticker:
+                self.cooldowns[ticker] = exit_date
+
+        if hasattr(self, "portfolio_file") and self.portfolio_file and os.path.abspath(self.portfolio_file) != os.path.abspath(portfolio_path):
+            self.save_state(self.portfolio_file)
+
+        return closed_trades
 
     def buy_asset(self, ticker, date, current_price, allocation, atr_14=None, avg_volume_20=None, bid_ask_spread=None, kelly_fraction=None, confidence_score=None):
         """Simulates buying an asset using dynamic slippage, deducting cash, and recording position metadata."""
@@ -100,18 +321,22 @@ class ExecutionAgent:
                 
                 if ticker in self.active_positions:
                     pos = self.active_positions[ticker]
-                    old_shares = pos["shares"]
+                    old_shares = pos.get("quantity", pos.get("shares", 0))
                     old_price = pos["entry_price"]
                     total_shares = old_shares + shares_to_buy
                     average_price = ((old_shares * old_price) + (shares_to_buy * execution_price)) / total_shares
                     
                     self.active_positions[ticker] = {
+                        "ticker": ticker,
                         "entry_price": average_price,
                         "fill_price": execution_price,
                         "slippage_inr": total_slippage,
                         "slippage_pct": slippage_pct,
                         "total_slippage_cost": total_slippage_cost,
+                        "quantity": total_shares,
                         "shares": total_shares,
+                        "stop_loss_pct": pos.get("stop_loss_pct", 0.03),
+                        "take_profit_pct": pos.get("take_profit_pct", 0.04),
                         "entry_date": pos.get("entry_date", date),
                         "last_buy_date": date,
                         "buy_count": pos.get("buy_count", 1) + 1,
@@ -124,12 +349,16 @@ class ExecutionAgent:
                     )
                 else:
                     self.active_positions[ticker] = {
+                        "ticker": ticker,
                         "entry_price": execution_price,
                         "fill_price": execution_price,
                         "slippage_inr": total_slippage,
                         "slippage_pct": slippage_pct,
                         "total_slippage_cost": total_slippage_cost,
+                        "quantity": shares_to_buy,
                         "shares": shares_to_buy,
+                        "stop_loss_pct": 0.03,
+                        "take_profit_pct": 0.04,
                         "entry_date": date,
                         "buy_count": 1,
                         "peak_price": execution_price,
@@ -139,6 +368,7 @@ class ExecutionAgent:
                     print(
                         f"[{date}] BUY      | {ticker:=<11} | {shares_to_buy} Shares @ Fill: INR {execution_price:.2f} | Slippage: INR {total_slippage:.2f} ({slippage_pct:.4%}) | Total Slippage Cost: INR {total_slippage_cost:.2f} | Fees: INR {transaction_fees:.2f}"
                     )
+                self.portfolio["cash"] = self.current_cash
                 return True
         return False
 
