@@ -167,8 +167,8 @@ function updateKPIs() {
     netReturnEl.textContent = `${netReturn >= 0 ? '+' : ''}${netReturn.toFixed(2)}%`;
     netReturnEl.className = `kpi-value ${netReturn >= 0 ? 'positive' : 'negative'}`;
 
-    const trades = portfolio.trade_log || [];
-    const wins = trades.filter(t => parseFloat(t.Profit_Loss) > 0).length;
+    const trades = portfolio.trade_log || portfolio.closed_trades || [];
+    const wins = trades.filter(t => (parseFloat(t.Profit_Loss !== undefined ? t.Profit_Loss : t.realized_pnl) || 0) > 0).length;
     const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
 
     document.getElementById("val-win-rate").textContent = `${winRate.toFixed(1)}%`;
@@ -207,23 +207,33 @@ function updateTables() {
     const ledgerTableBody = document.querySelector("#ledger-table tbody");
     ledgerTableBody.innerHTML = "";
     
-    const trades = portfolio.trade_log || [];
+    const trades = portfolio.trade_log || portfolio.closed_trades || [];
     if (trades.length === 0) {
         ledgerTableBody.innerHTML = `<tr class="empty-row"><td colspan="7">No closed transactions yet.</td></tr>`;
     } else {
         [...trades].reverse().forEach(trade => {
-            const pnl = parseFloat(trade.Profit_Loss);
+            const ticker = trade.Ticker || trade.ticker || "N/A";
+            const entryDate = trade.Entry_Date || trade.entry_date || "N/A";
+            const exitDate = trade.Exit_Date || trade.exit_date || "N/A";
+            const rawEntryPrice = trade.Entry_Price !== undefined ? trade.Entry_Price : trade.entry_price;
+            const entryPrice = parseFloat(rawEntryPrice) || 0;
+            const rawExitPrice = trade.Exit_Price !== undefined ? trade.Exit_Price : (trade.fill_price !== undefined ? trade.fill_price : trade.exit_price);
+            const exitPrice = parseFloat(rawExitPrice) || 0;
+            const rawPnl = trade.Profit_Loss !== undefined ? trade.Profit_Loss : trade.realized_pnl;
+            const pnl = parseFloat(rawPnl) || 0;
+            const reason = trade.Exit_Reason || trade.exit_reason || "N/A";
+
             const tr = document.createElement("tr");
             tr.innerHTML = `
-                <td><strong>${trade.Ticker}</strong></td>
-                <td>${trade.Entry_Date}</td>
-                <td>${trade.Exit_Date}</td>
-                <td>INR ${parseFloat(trade.Entry_Price).toFixed(2)}</td>
-                <td>INR ${parseFloat(trade.Exit_Price).toFixed(2)}</td>
+                <td><strong>${ticker}</strong></td>
+                <td>${entryDate}</td>
+                <td>${exitDate}</td>
+                <td>INR ${entryPrice.toFixed(2)}</td>
+                <td>INR ${exitPrice.toFixed(2)}</td>
                 <td class="${pnl >= 0 ? 'positive' : 'negative'}" style="font-weight:600">
                     INR ${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)}
                 </td>
-                <td><span class="badge">${trade.Exit_Reason}</span></td>
+                <td><span class="badge">${reason}</span></td>
             `;
             ledgerTableBody.appendChild(tr);
         });
@@ -270,16 +280,24 @@ function renderTickerChart(ticker, data) {
     const buyPoints = [];
     const sellPoints = [];
 
-    const trades = portfolio ? (portfolio.trade_log || []) : [];
+    const trades = portfolio ? (portfolio.trade_log || portfolio.closed_trades || []) : [];
     trades.forEach(trade => {
-        if (trade.Ticker === ticker) {
-            const exitIndex = labels.indexOf(trade.Exit_Date);
-            if (exitIndex !== -1) {
-                sellPoints.push({ x: trade.Exit_Date, y: parseFloat(trade.Exit_Price) });
+        const tradeTicker = trade.Ticker || trade.ticker;
+        if (tradeTicker === ticker) {
+            const exitDate = trade.Exit_Date || trade.exit_date;
+            const rawExitPrice = trade.Exit_Price !== undefined ? trade.Exit_Price : (trade.fill_price !== undefined ? trade.fill_price : trade.exit_price);
+            const exitPrice = parseFloat(rawExitPrice);
+            const entryDate = trade.Entry_Date || trade.entry_date;
+            const rawEntryPrice = trade.Entry_Price !== undefined ? trade.Entry_Price : trade.entry_price;
+            const entryPrice = parseFloat(rawEntryPrice);
+
+            const exitIndex = labels.indexOf(exitDate);
+            if (exitIndex !== -1 && !isNaN(exitPrice)) {
+                sellPoints.push({ x: exitDate, y: exitPrice });
             }
-            const entryIndex = labels.indexOf(trade.Entry_Date);
-            if (entryIndex !== -1) {
-                buyPoints.push({ x: trade.Entry_Date, y: parseFloat(trade.Entry_Price) });
+            const entryIndex = labels.indexOf(entryDate);
+            if (entryIndex !== -1 && !isNaN(entryPrice)) {
+                buyPoints.push({ x: entryDate, y: entryPrice });
             }
         }
     });
@@ -462,13 +480,19 @@ function renderEquityChart() {
     const values = [initialCapital];
     
     let currentBalance = initialCapital;
-    const trades = portfolio ? (portfolio.trade_log || []) : [];
+    const trades = portfolio ? (portfolio.trade_log || portfolio.closed_trades || []) : [];
     
-    const sortedTrades = [...trades].sort((a, b) => new Date(a.Exit_Date) - new Date(b.Exit_Date));
+    const sortedTrades = [...trades].sort((a, b) => {
+        const dateA = new Date(a.Exit_Date || a.exit_date || 0);
+        const dateB = new Date(b.Exit_Date || b.exit_date || 0);
+        return dateA - dateB;
+    });
     
     sortedTrades.forEach(trade => {
-        currentBalance += parseFloat(trade.Profit_Loss);
-        dates.push(trade.Exit_Date);
+        const pnl = parseFloat(trade.Profit_Loss !== undefined ? trade.Profit_Loss : trade.realized_pnl) || 0;
+        const exitDate = trade.Exit_Date || trade.exit_date || "Exit";
+        currentBalance += pnl;
+        dates.push(exitDate);
         values.push(currentBalance);
     });
 
