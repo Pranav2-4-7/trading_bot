@@ -40,7 +40,7 @@ def compute_profile_metrics(state):
     net_return = ((total_val - initial) / initial) * 100.0 if initial > 0 else 0.0
 
     # Win rate calculation
-    winning_trades = sum(1 for t in trade_log if t.get("Profit_Loss", 0.0) > 0)
+    winning_trades = sum(1 for t in trade_log if t.get("Profit_Loss", t.get("realized_pnl", 0.0)) > 0)
     total_closed = len(trade_log)
     win_rate = (winning_trades / total_closed * 100.0) if total_closed > 0 else 0.0
 
