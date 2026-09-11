@@ -121,6 +121,32 @@ def get_portfolio():
     except Exception as e:
         print(f"[API Portfolio Error] Failed to attach current_prices: {e}")
 
+    # Ensure trade_log entries are normalized with both TitleCase and lowercase keys
+    trades = data.get("trade_log", data.get("closed_trades", []))
+    for t in trades:
+        tkr = t.get("Ticker") or t.get("ticker", "N/A")
+        en_dt = t.get("Entry_Date") or t.get("entry_date", "")
+        ex_dt = t.get("Exit_Date") or t.get("exit_date", "")
+        en_pr = t.get("Entry_Price", t.get("entry_price", 0.0))
+        ex_pr = t.get("Exit_Price", t.get("fill_price", t.get("exit_price", 0.0)))
+        pnl = t.get("Profit_Loss", t.get("realized_pnl", 0.0))
+        reason = t.get("Exit_Reason") or t.get("exit_reason", "STOP_LOSS")
+
+        t["Ticker"] = tkr
+        t["ticker"] = tkr
+        t["Entry_Date"] = en_dt
+        t["entry_date"] = en_dt
+        t["Exit_Date"] = ex_dt
+        t["exit_date"] = ex_dt
+        t["Entry_Price"] = en_pr
+        t["entry_price"] = en_pr
+        t["Exit_Price"] = ex_pr
+        t["exit_price"] = ex_pr
+        t["Profit_Loss"] = pnl
+        t["realized_pnl"] = pnl
+        t["Exit_Reason"] = reason
+        t["exit_reason"] = reason
+
     return jsonify(data)
 
 @app.route("/api/profiles")
