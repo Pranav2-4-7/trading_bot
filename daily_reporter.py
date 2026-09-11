@@ -134,16 +134,16 @@ def generate_daily_report(output_dir="reports", date_str=None):
         # Filter today's closed trades
         today_trades = [
             t for t in trade_log 
-            if str(t.get("Exit_Date", "")).startswith(today_date_str)
+            if str(t.get("Exit_Date", t.get("exit_date", ""))).startswith(today_date_str)
         ]
         
         total_closed_today = len(today_trades)
-        wins_today = sum(1 for t in today_trades if t.get("Profit_Loss", 0.0) > 0)
-        pnl_today = sum(t.get("Profit_Loss", 0.0) for t in today_trades)
+        wins_today = sum(1 for t in today_trades if t.get("Profit_Loss", t.get("realized_pnl", 0.0)) > 0)
+        pnl_today = sum(t.get("Profit_Loss", t.get("realized_pnl", 0.0)) for t in today_trades)
         win_rate_today = (wins_today / total_closed_today * 100.0) if total_closed_today > 0 else 0.0
 
         # Total lifetime trades
-        wins_total = sum(1 for t in trade_log if t.get("Profit_Loss", 0.0) > 0)
+        wins_total = sum(1 for t in trade_log if t.get("Profit_Loss", t.get("realized_pnl", 0.0)) > 0)
         win_rate_total = (wins_total / len(trade_log) * 100.0) if len(trade_log) > 0 else 0.0
 
         report_md.append(f"\n### {p['name']}")
@@ -161,12 +161,15 @@ def generate_daily_report(output_dir="reports", date_str=None):
             report_md.append(f"| Ticker | Entry Date | Exit Date | Fill Price | Exit Price | Slippage (INR) | Realized PnL | Exit Reason |")
             report_md.append(f"| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |")
             for t in today_trades:
-                fill_p = t.get("Fill_Price", t.get("Entry_Price", 0.0))
-                exit_p = t.get("Exit_Price", 0.0)
-                slip_inr = t.get("Slippage_INR", 0.0)
-                pnl = t.get("Profit_Loss", 0.0)
-                reason = t.get("Exit_Reason", "Model Signal")
-                report_md.append(f"| **{t.get('Ticker')}** | {t.get('Entry_Date')} | {t.get('Exit_Date')} | INR {fill_p:.2f} | INR {exit_p:.2f} | INR {slip_inr:.2f} | **INR {pnl:+.2f}** | {reason} |")
+                fill_p = t.get("Fill_Price", t.get("fill_price", t.get("Entry_Price", t.get("entry_price", 0.0))))
+                exit_p = t.get("Exit_Price", t.get("exit_price", 0.0))
+                slip_inr = t.get("Slippage_INR", t.get("slippage_and_brokerage", 0.0))
+                pnl = t.get("Profit_Loss", t.get("realized_pnl", 0.0))
+                reason = t.get("Exit_Reason", t.get("exit_reason", "Model Signal"))
+                tkr = t.get("Ticker", t.get("ticker", "N/A"))
+                en_date = t.get("Entry_Date", t.get("entry_date", ""))
+                ex_date = t.get("Exit_Date", t.get("exit_date", ""))
+                report_md.append(f"| **{tkr}** | {en_date} | {ex_date} | INR {fill_p:.2f} | INR {exit_p:.2f} | INR {slip_inr:.2f} | **INR {pnl:+.2f}** | {reason} |")
         else:
             report_md.append(f"\n*No closed trades for this profile today.*")
 
