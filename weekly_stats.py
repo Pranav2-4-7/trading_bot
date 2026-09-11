@@ -48,15 +48,15 @@ def calculate_weekly_metrics(state: dict) -> dict:
 
     # Trade stats
     closed_trades = len(trade_log)
-    winning_trades = sum(1 for t in trade_log if t.get("Profit_Loss", 0.0) > 0)
+    winning_trades = sum(1 for t in trade_log if t.get("Profit_Loss", t.get("realized_pnl", 0.0)) > 0)
     losing_trades = closed_trades - winning_trades
     win_rate = (winning_trades / closed_trades * 100.0) if closed_trades > 0 else 0.0
 
-    total_profit = sum(t.get("Profit_Loss", 0.0) for t in trade_log if t.get("Profit_Loss", 0.0) > 0)
-    total_loss = abs(sum(t.get("Profit_Loss", 0.0) for t in trade_log if t.get("Profit_Loss", 0.0) < 0))
+    total_profit = sum(t.get("Profit_Loss", t.get("realized_pnl", 0.0)) for t in trade_log if t.get("Profit_Loss", t.get("realized_pnl", 0.0)) > 0)
+    total_loss = abs(sum(t.get("Profit_Loss", t.get("realized_pnl", 0.0)) for t in trade_log if t.get("Profit_Loss", t.get("realized_pnl", 0.0)) < 0))
     profit_factor = (total_profit / total_loss) if total_loss > 0 else (total_profit if total_profit > 0 else 1.0)
 
-    avg_pnl = sum(t.get("Profit_Loss", 0.0) for t in trade_log) / closed_trades if closed_trades > 0 else 0.0
+    avg_pnl = sum(t.get("Profit_Loss", t.get("realized_pnl", 0.0)) for t in trade_log) / closed_trades if closed_trades > 0 else 0.0
 
     return {
         "valuation": total_val,
