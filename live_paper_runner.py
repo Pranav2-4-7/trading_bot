@@ -15,6 +15,7 @@ import json
 import xml.etree.ElementTree as ET
 import re
 import numpy as np
+import traceback
 
 # Add current folder to path to allow importing adjacent modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -534,7 +535,6 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             tech_row["Debt_to_Equity"] = debt_to_equity
 
             # Fetch global sentiment using cached GDELT and FinBERT scores (15-min cache lifetime)
-            import time
             global_sentiment = 0.0
             now = time.time()
             if ticker in SENTIMENT_CACHE and (now - SENTIMENT_CACHE[ticker][0]) < 900:
@@ -569,7 +569,6 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             print(f"Current price for {ticker}: INR {live_price:.2f}")
 
         except Exception as e:
-            import traceback
             print(f"Error processing live data for {ticker}: {e}")
             print(traceback.format_exc())
 
