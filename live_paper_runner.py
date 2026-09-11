@@ -676,19 +676,24 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
                             proposed_trade_val = total_port_val * f_kelly
                             trade_sector = TICKER_SECTORS.get(ticker, "Other")
 
-                            # Gate trade allocation with PortfolioRiskAgent BEFORE calculate_kelly_allocation
-                            is_port_safe, port_reject_reason = portfolio_risk.check_portfolio_risk(
+                            # Gate trade allocation with risk.approve_order (re-entry cooldown lock & portfolio risk)
+                            rsi_val = float(features_df["RSI14"].iloc[-1]) if ("RSI14" in features_df.columns and not pd.isna(features_df["RSI14"].iloc[-1])) else None
+                            dist_s2_val = float(features_df["Dist_S2"].iloc[-1]) if ("Dist_S2" in features_df.columns and not pd.isna(features_df["Dist_S2"].iloc[-1])) else None
+
+                            is_approved, reject_reason = risk.approve_order(
                                 open_positions=execution.active_positions,
-                                new_trade_ticker=ticker,
-                                new_trade_sector=trade_sector,
-                                new_trade_value=proposed_trade_val,
+                                candidate_ticker=ticker,
+                                target_inr=proposed_trade_val,
                                 total_portfolio_value=total_port_val,
-                                correlation_matrix=CORRELATION_MATRIX_CACHE,
-                                current_prices=current_prices
+                                portfolio_risk_agent=portfolio_risk,
+                                current_prices=current_prices,
+                                rsi_14=rsi_val,
+                                dist_s2=dist_s2_val,
+                                features_df=features_df
                             )
 
-                            if not is_port_safe:
-                                print(f"  [PortfolioRiskAgent Block] Trade rejected for {ticker}: {port_reject_reason}")
+                            if not is_approved:
+                                print(f"  [Risk Approval Block] Trade rejected for {ticker}: {reject_reason}")
                             else:
                                 # Active liquidity recovery check for cash-exhausted states
                                 if execution.current_cash < 5000 or (total_port_val > 0 and execution.current_cash < 0.05 * total_port_val):

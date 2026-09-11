@@ -2,8 +2,27 @@ import json
 import logging
 import math
 import os
+import time
 from datetime import datetime
 import pandas as pd
+
+# Re-entry cooldown registry tracking tickers exited via STOP_LOSS with lockout expiry timestamp
+cooldown_registry = {}
+
+def record_stop_loss_cooldown(ticker, current_timestamp=None):
+    """
+    Records a 4-hour re-entry lockout timestamp for a ticker exited via STOP_LOSS.
+    """
+    if current_timestamp is None:
+        current_timestamp = time.time()
+    elif isinstance(current_timestamp, str):
+        try:
+            current_timestamp = pd.to_datetime(current_timestamp).timestamp()
+        except Exception:
+            current_timestamp = time.time()
+    lockout_time = current_timestamp + (4 * 3600)
+    cooldown_registry[ticker] = lockout_time
+    return lockout_time
 
 def calculate_dynamic_slippage(price, order_quantity, atr_14=None, avg_volume_20=None, bid_ask_spread=None):
     """
@@ -197,6 +216,13 @@ def check_exits(current_market_prices, portfolio=None, portfolio_path="data/port
 
             if is_stop_loss:
                 print(f"[STOP-LOSS HIT] Closed {pos['ticker']} at INR {current_price:.2f} (Loss: {pnl_pct:.2%}).")
+                current_ts = None
+                if date:
+                    try:
+                        current_ts = pd.to_datetime(date).timestamp()
+                    except Exception:
+                        pass
+                record_stop_loss_cooldown(ticker, current_ts)
             else:
                 print(f"[TAKE-PROFIT HIT] Closed {pos['ticker']} at INR {current_price:.2f} (Gain: {pnl_pct:.2%}).")
 
@@ -372,7 +398,7 @@ class ExecutionAgent:
                 return True
         return False
 
-    def place_buy_order(self, ticker, date, current_price, allocation, current_prices, risk_agent, portfolio_risk_agent=None, atr_14=None, avg_volume_20=None, bid_ask_spread=None, kelly_fraction=None, confidence_score=None):
+    def place_buy_order(self, ticker, date, current_price, allocation, current_prices, risk_agent, portfolio_risk_agent=None, atr_14=None, avg_volume_20=None, bid_ask_spread=None, kelly_fraction=None, confidence_score=None, rsi_14=None, dist_s2=None, features_df=None):
         """Attempts to execute a buy order after validating portfolio risk gating and capital recycling."""
         total_port_val = self.get_portfolio_value(current_prices)
         
@@ -384,7 +410,10 @@ class ExecutionAgent:
                 target_inr=allocation,
                 total_portfolio_value=total_port_val,
                 portfolio_risk_agent=portfolio_risk_agent,
-                current_prices=current_prices
+                current_prices=current_prices,
+                rsi_14=rsi_14,
+                dist_s2=dist_s2,
+                features_df=features_df
             )
             if not approved:
                 return False
@@ -461,6 +490,14 @@ class ExecutionAgent:
         })
         
         self.cooldowns[ticker] = date
+        if "stop_loss" in str(reason).lower() or "stop-loss" in str(reason).lower():
+            current_ts = None
+            if date:
+                try:
+                    current_ts = pd.to_datetime(date).timestamp()
+                except Exception:
+                    pass
+            record_stop_loss_cooldown(ticker, current_ts)
         del self.active_positions[ticker]
         return True
 
@@ -725,9 +762,65 @@ class RiskAgent:
         self.take_profit_pct = take_profit_pct
         self.max_allocation_pct = max_allocation_pct
         self.trailing_stop_loss_pct = trailing_stop_loss_pct
+        self.cooldown_registry = cooldown_registry
 
-    def approve_order(self, open_positions, candidate_ticker, target_inr, total_portfolio_value, portfolio_risk_agent=None, current_prices=None):
-        """Runs PortfolioRiskAgent.check_portfolio_risk() prior to computing share sizes, logging the exact rejection reason if blocked."""
+    def record_stop_loss(self, ticker, current_timestamp=None):
+        """Records a 4-hour re-entry lockout timestamp for a ticker exited via STOP_LOSS."""
+        return record_stop_loss_cooldown(ticker, current_timestamp)
+
+    def approve_order(self, open_positions, candidate_ticker, target_inr, total_portfolio_value, 
+                      portfolio_risk_agent=None, current_prices=None, 
+                      rsi_14=None, dist_s2=None, features_df=None, current_timestamp=None):
+        """
+        Runs re-entry cooldown lock checks and PortfolioRiskAgent.check_portfolio_risk() 
+        prior to computing share sizes, logging the exact rejection reason if blocked.
+        """
+        # 1. Re-Entry Cooldown Lock Check (falling knife protection after stop-loss exit)
+        registry = getattr(self, "cooldown_registry", cooldown_registry)
+        if candidate_ticker in registry:
+            lockout_time = registry[candidate_ticker]
+            now = current_timestamp if current_timestamp is not None else time.time()
+
+            is_locked = False
+            if isinstance(lockout_time, (int, float)):
+                is_locked = now < lockout_time
+            elif isinstance(lockout_time, str):
+                try:
+                    is_locked = pd.to_datetime(now) < pd.to_datetime(lockout_time)
+                except Exception:
+                    is_locked = True
+            else:
+                is_locked = now < lockout_time
+
+            if is_locked:
+                # Check for confirmed oversold exhaustion:
+                # rsi_14 < 30 AND Dist_S2 >= -0.01 (price testing S2 support)
+                rsi_val = rsi_14
+                dist_val = dist_s2
+
+                if features_df is not None:
+                    if rsi_val is None:
+                        for col in ["RSI14", "rsi_14", "RSI"]:
+                            if col in features_df.columns and not features_df[col].empty:
+                                rsi_val = float(features_df[col].iloc[-1])
+                                break
+                    if dist_val is None:
+                        for col in ["Dist_S2", "dist_s2"]:
+                            if col in features_df.columns and not features_df[col].empty:
+                                dist_val = float(features_df[col].iloc[-1])
+                                break
+
+                has_confirmed_reversal = False
+                if rsi_val is not None and dist_val is not None:
+                    if float(rsi_val) < 30.0 and float(dist_val) >= -0.01:
+                        has_confirmed_reversal = True
+
+                if not has_confirmed_reversal:
+                    msg = f"[RE-ENTRY GUARD] Rejected {candidate_ticker}. In cooldown until {lockout_time} without confirmed reversal setup."
+                    print(msg)
+                    return False, msg
+
+        # 2. Portfolio Risk Agent Check
         if portfolio_risk_agent is not None:
             approved, reason = portfolio_risk_agent.check_portfolio_risk(
                 open_positions=open_positions,
