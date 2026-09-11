@@ -194,6 +194,7 @@ def check_exits(current_market_prices, portfolio=None, portfolio_path="data/port
                 if pos in portfolio["positions"]:
                     portfolio["positions"].remove(pos)
 
+            entry_date_val = pos.get("entry_date", pos.get("Entry_Date", date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
             closed_record = {
                 **pos,
                 "ticker": ticker,
@@ -206,7 +207,16 @@ def check_exits(current_market_prices, portfolio=None, portfolio_path="data/port
                 "realized_pnl": realized_pnl,
                 "slippage_and_brokerage": slippage_and_brokerage,
                 "exit_reason": exit_reason,
-                "exit_date": exit_timestamp
+                "exit_date": exit_timestamp,
+                # TitleCase keys for frontend & reporting compatibility
+                "Ticker": ticker,
+                "Entry_Date": entry_date_val,
+                "Exit_Date": exit_timestamp,
+                "Entry_Price": entry_price,
+                "Exit_Price": current_price,
+                "Fill_Price": execution_price,
+                "Profit_Loss": realized_pnl,
+                "Exit_Reason": exit_reason
             }
             portfolio.setdefault("closed_trades", []).append(closed_record)
             if "trade_log" in portfolio and portfolio["trade_log"] is not portfolio["closed_trades"]:
@@ -477,16 +487,27 @@ class ExecutionAgent:
 
         self.trade_log.append({
             "Ticker": ticker,
-            "Entry_Date": position["entry_date"],
+            "Entry_Date": position.get("entry_date", position.get("Entry_Date", "")),
             "Exit_Date": date,
-            "Entry_Price": position["entry_price"],
+            "Entry_Price": position.get("entry_price", position.get("Entry_Price", 0.0)),
             "Exit_Price": execution_price,
             "Fill_Price": execution_price,
             "Slippage_INR": total_slippage,
             "Slippage_Pct": slippage_pct,
             "Total_Slippage_Cost": total_slippage_cost,
             "Profit_Loss": profit_loss,
-            "Exit_Reason": reason
+            "Exit_Reason": reason,
+            # Lowercase keys for full symmetry
+            "ticker": ticker,
+            "entry_date": position.get("entry_date", position.get("Entry_Date", "")),
+            "exit_date": date,
+            "entry_price": position.get("entry_price", position.get("Entry_Price", 0.0)),
+            "exit_price": execution_price,
+            "fill_price": execution_price,
+            "realized_pnl": profit_loss,
+            "exit_reason": reason,
+            "quantity": shares_to_sell,
+            "shares": shares_to_sell
         })
         
         self.cooldowns[ticker] = date
@@ -1097,6 +1118,9 @@ class RiskAgent:
 
         # Record closed trade
         clean_record = {k: v for k, v in weakest_position.items() if not k.startswith("_")}
+        entry_date_val = clean_record.get("entry_date", clean_record.get("Entry_Date", date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+        entry_price_val = clean_record.get("entry_price", clean_record.get("Entry_Price", 0.0))
+        exit_date_val = date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         closed_record = {
             **clean_record,
             "ticker": weakest_ticker,
@@ -1108,7 +1132,16 @@ class RiskAgent:
             "realized_pnl": realized_pnl,
             "slippage_and_brokerage": slippage_and_brokerage,
             "exit_reason": "PORTFOLIO_PRUNING",
-            "exit_date": date or datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "exit_date": exit_date_val,
+            # TitleCase keys for frontend & reporting compatibility
+            "Ticker": weakest_ticker,
+            "Entry_Date": entry_date_val,
+            "Exit_Date": exit_date_val,
+            "Entry_Price": entry_price_val,
+            "Exit_Price": current_price,
+            "Fill_Price": execution_price,
+            "Profit_Loss": realized_pnl,
+            "Exit_Reason": "PORTFOLIO_PRUNING"
         }
 
         if portfolio is not None:
