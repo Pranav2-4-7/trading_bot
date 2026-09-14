@@ -57,6 +57,19 @@ def fetch_batch_live_prices(tickers):
     current_prices = {}
     try:
         data = yf.download(tickers, period="1d", interval="1m", progress=False)
+        has_close = not data.empty and "Close" in data.columns
+        is_empty_close = False
+        if has_close:
+            c = data["Close"]
+            if isinstance(c, pd.Series):
+                is_empty_close = c.dropna().empty
+            else:
+                is_empty_close = c.dropna(how="all").empty
+
+        if not has_close or is_empty_close:
+            # Fallback to 5d if 1d has no bars (e.g. after-hours, holiday, or off-session)
+            data = yf.download(tickers, period="5d", interval="1m", progress=False)
+
         if not data.empty and "Close" in data.columns:
             close_df = data["Close"]
             if isinstance(close_df, pd.Series):
@@ -78,6 +91,8 @@ def fetch_batch_live_prices(tickers):
         if t not in current_prices or np.isnan(current_prices[t]):
             try:
                 hist = yf.Ticker(t).history(period="1d", interval="1m")
+                if hist.empty or "Close" not in hist.columns:
+                    hist = yf.Ticker(t).history(period="5d", interval="1m")
                 if not hist.empty and "Close" in hist.columns:
                     current_prices[t] = float(hist["Close"].iloc[-1])
             except Exception as err:
