@@ -12,3 +12,10 @@ mlflow.db
 .ipynb_checkpoints/
 .vs/
 .idea/
+
+# Models and weights
+*.pkl
+*.joblib
+*.model
+*.xgb
+models/
