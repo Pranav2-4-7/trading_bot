@@ -40,5 +40,10 @@
     "RENUKA.NS",
     "TRIVENI.NS",
     "DALMIASUG.NS"
-  ]
+  ],
+  "test_mode": true,
+  "risk_settings": {
+    "risk_off_multiplier": 1.10,
+    "note": "test_mode=true bypasses Regime and Trend filters for paper trading. Set to false for production. risk_off_multiplier lowered from 1.25 to 1.10 to allow more signals through in bearish conditions."
+  }
 }
