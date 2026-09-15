@@ -284,8 +284,13 @@ def get_market_regime(benchmark_df=None, watchlist_dfs=None):
     print(f"  [Market Regime Classifier] Signals -> Trend: {signal_1}, Volatility: {signal_2}, Breadth: {signal_3} | Votes: {votes}/3 => Regime: {regime}")
     return regime
 
-def calculate_dynamic_threshold(current_price, dma_200, base_threshold, regime="RISK_ON"):
-    """Calculates dynamic confidence threshold based on the 200 DMA drop and market regime."""
+def calculate_dynamic_threshold(current_price, dma_200, base_threshold, regime="RISK_ON", risk_off_multiplier=1.10, test_mode=False):
+    """Calculates dynamic confidence threshold based on the 200 DMA drop and market regime.
+    
+    Args:
+        risk_off_multiplier: Scaling multiplier applied when regime is RISK_OFF (from config.json).
+        test_mode: When True, skips regime multiplier so the bot can execute trades for testing.
+    """
     if dma_200 is None or pd.isna(dma_200) or dma_200 <= 0:
         dynamic_threshold = base_threshold
     elif current_price >= dma_200:
@@ -295,10 +300,12 @@ def calculate_dynamic_threshold(current_price, dma_200, base_threshold, regime="
         dynamic_threshold = base_threshold + (drop_pct * 1.5)
         print(f"  [MACRO FILTER] Stock below 200 DMA. Base: {base_threshold:.2f} | 200 DMA Adjusted: {dynamic_threshold:.2f}")
 
-    # When 'RISK_OFF', apply a 1.25x scaling multiplier to the dynamic entry confidence threshold
-    if regime == "RISK_OFF":
-        dynamic_threshold = dynamic_threshold * 1.25
-        print(f"  [REGIME FILTER: RISK_OFF] Applied 1.25x scaling multiplier -> Dynamic Threshold: {dynamic_threshold:.2f}")
+    # When 'RISK_OFF', apply configurable scaling multiplier (bypassed in test_mode)
+    if regime == "RISK_OFF" and not test_mode:
+        dynamic_threshold = dynamic_threshold * risk_off_multiplier
+        print(f"  [REGIME FILTER: RISK_OFF] Applied {risk_off_multiplier:.2f}x scaling multiplier -> Dynamic Threshold: {dynamic_threshold:.2f}")
+    elif regime == "RISK_OFF" and test_mode:
+        print(f"  [REGIME FILTER: RISK_OFF] ⚠️ TEST_MODE: Regime multiplier bypassed. Threshold unchanged: {dynamic_threshold:.2f}")
 
     dynamic_threshold = min(dynamic_threshold, 0.85)
     return dynamic_threshold
@@ -315,8 +322,23 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
         
     data_dir = os.path.abspath(os.path.join(base_dir, "..", "data"))
 
+    # Load test_mode and risk_off_multiplier from config.json
+    config_path = os.path.join(base_dir, "config.json")
+    test_mode = False
+    risk_off_multiplier = 1.10
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, "r") as _cfg:
+                _config = json.load(_cfg)
+            test_mode = bool(_config.get("test_mode", False))
+            risk_off_multiplier = float(_config.get("risk_settings", {}).get("risk_off_multiplier", 1.10))
+        except Exception as _cfg_err:
+            print(f"[Config Warning] Could not load config.json settings: {_cfg_err}")
+
     print("==================================================")
     print(f"LIVE PAPER TRADING BOT RUNNER (PROFILE: {profile_id.upper()})")
+    if test_mode:
+        print("⚠️  [TEST MODE ACTIVE] Regime & Trend filters bypassed. Set test_mode=false in config.json for production.")
     print("==================================================")
 
     # 1. Initialize execution and risk agents, load portfolio state based on profile_id
@@ -624,7 +646,7 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
 
         try:
             dma_200 = float(features_df["MA200"].iloc[-1]) if "MA200" in features_df.columns else None
-            required_threshold = calculate_dynamic_threshold(current_price, dma_200, target_buy_threshold, regime=market_regime)
+            required_threshold = calculate_dynamic_threshold(current_price, dma_200, target_buy_threshold, regime=market_regime, risk_off_multiplier=risk_off_multiplier, test_mode=test_mode)
 
             signal, proba = strategy.predict_signal(features_df)
             confidence = float(proba[0])
@@ -655,8 +677,11 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
             if can_buy:
                 sma50 = get_daily_sma50(ticker)
                 if sma50 and current_price < sma50:
-                    print(f"  [Trend Filter] Blocked BUY/AVG-DOWN for {ticker}: Price (INR {current_price:.2f}) is below Daily 50 SMA (INR {sma50:.2f})")
-                    can_buy = False
+                    if test_mode:
+                        print(f"  [Trend Filter] ⚠️ TEST_MODE: Bypassed for {ticker} (Price INR {current_price:.2f} < 50 SMA INR {sma50:.2f})")
+                    else:
+                        print(f"  [Trend Filter] Blocked BUY/AVG-DOWN for {ticker}: Price (INR {current_price:.2f}) is below Daily 50 SMA (INR {sma50:.2f})")
+                        can_buy = False
 
                 # Intraday Micro-Dip check: Avoid buying at the peak of a 1-minute overbought spike (RSI > max_rsi_allowed)
                 if can_buy and "RSI14" in df.columns:
