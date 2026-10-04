@@ -153,14 +153,35 @@ def check_exits(current_market_prices, portfolio=None, portfolio_path="data/port
         if quantity <= 0:
             continue
 
+        peak_price = max(pos.get("peak_price", entry_price), current_price)
+        pos["peak_price"] = peak_price
+
         stop_loss_pct = pos.get("stop_loss_pct", 0.03)
         take_profit_pct = pos.get("take_profit_pct", 0.04)
+        trailing_stop_loss_pct = pos.get("trailing_stop_loss_pct", 0.03)
 
         is_stop_loss = pnl_pct <= -stop_loss_pct
         is_take_profit = pnl_pct >= take_profit_pct
+        is_trailing_ratchet = False
 
-        if is_stop_loss or is_take_profit:
-            exit_reason = "STOP_LOSS" if is_stop_loss else "TAKE_PROFIT"
+        if not is_stop_loss and not is_take_profit and peak_price > entry_price:
+            peak_profit_pct = (peak_price - entry_price) / entry_price
+            trailing_drawdown_pct = (peak_price - current_price) / peak_price
+            ratchet_activation = 0.03
+            if peak_profit_pct >= ratchet_activation:
+                ratchet_floor = max(entry_price * 1.01, peak_price * (1.0 - trailing_stop_loss_pct))
+                if current_price <= ratchet_floor or trailing_drawdown_pct >= trailing_stop_loss_pct:
+                    is_trailing_ratchet = True
+            elif trailing_drawdown_pct >= trailing_stop_loss_pct:
+                is_trailing_ratchet = True
+
+        if is_stop_loss or is_take_profit or is_trailing_ratchet:
+            if is_stop_loss:
+                exit_reason = "STOP_LOSS"
+            elif is_take_profit:
+                exit_reason = "TAKE_PROFIT"
+            else:
+                exit_reason = "TRAILING_STOP_LOSS_RATCHET"
 
             total_slippage = calculate_dynamic_slippage(
                 current_price,
@@ -605,7 +626,7 @@ TICKER_SECTORS = {
 
 class PortfolioRiskAgent:
     """Agent responsible for gating trade allocations based on aggregate portfolio risk and cross-asset correlation."""
-    def __init__(self, correlation_file="data/correlation_matrix.json", max_sector_exposure=0.35, max_correlated_exposure=0.05):
+    def __init__(self, correlation_file="data/correlation_matrix.json", max_sector_exposure=0.30, max_correlated_exposure=0.05):
         self.MAX_SECTOR_EXPOSURE = max_sector_exposure
         self.MAX_CORRELATED_EXPOSURE = max_correlated_exposure
         self.max_sector_exposure = max_sector_exposure
@@ -855,7 +876,7 @@ class RiskAgent:
                 return False, reason
         return True, "Approved"
 
-    def check_position_risk(self, ticker, current_price, entry_price, peak_price):
+    def check_position_risk(self, ticker, current_price, entry_price, peak_price=None):
         """Checks if a position has breached trailing stop-loss, fixed stop-loss, or take-profit boundaries."""
         # 1. Check Take-Profit from initial entry price
         price_change_pct = (current_price - entry_price) / entry_price
@@ -867,9 +888,16 @@ class RiskAgent:
             return True, "Stop-Loss Breached"
             
         # 3. Check Trailing Stop-Loss from highest recorded peak price
-        if peak_price and peak_price > entry_price:
-            trailing_drawdown_pct = (peak_price - current_price) / peak_price
-            if trailing_drawdown_pct >= self.trailing_stop_loss_pct:
+        effective_peak = max(peak_price or entry_price, current_price)
+        if effective_peak > entry_price:
+            peak_profit_pct = (effective_peak - entry_price) / effective_peak
+            trailing_drawdown_pct = (effective_peak - current_price) / effective_peak
+            ratchet_activation = getattr(self, 'ratchet_activation_pct', 0.03)
+            if peak_profit_pct >= ratchet_activation:
+                ratchet_floor = max(entry_price * 1.01, effective_peak * (1.0 - self.trailing_stop_loss_pct))
+                if current_price <= ratchet_floor or trailing_drawdown_pct >= self.trailing_stop_loss_pct:
+                    return True, "Trailing Stop-Loss (Ratchet) Breached"
+            elif trailing_drawdown_pct >= self.trailing_stop_loss_pct:
                 return True, "Trailing Stop-Loss Breached"
                 
         return False, None
