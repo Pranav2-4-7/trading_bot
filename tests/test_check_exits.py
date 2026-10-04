@@ -220,3 +220,41 @@ def test_execution_agent_check_exits_integration(tmp_path, capsys):
     assert agent.trade_log[0]["exit_reason"] == "TAKE_PROFIT"
     assert "SBIN.NS" in agent.cooldowns
     assert agent.current_cash > 100000.0
+
+
+def test_trailing_stop_loss_ratchet_locks_in_profit(tmp_path, capsys):
+    """Test that Trailing Stop-Loss Ratchet locks in profit when price pulls back 3% from a peak gain >= 3%."""
+    from paper_broker import check_exits
+    portfolio_file = str(tmp_path / "portfolio.json")
+    initial_cash = 50000.0
+    entry_price = 1000.0
+    quantity = 10
+    
+    # Position peaked at 1050 (+5% gain), current price pulled back to 1015 (-3.33% from peak)
+    portfolio = {
+        "cash": initial_cash,
+        "positions": {
+            "RELIANCE.NS": {
+                "ticker": "RELIANCE.NS",
+                "entry_price": entry_price,
+                "peak_price": 1050.0,
+                "quantity": quantity,
+                "shares": quantity,
+                "stop_loss_pct": 0.03,
+                "take_profit_pct": 0.06,
+                "trailing_stop_loss_pct": 0.03
+            }
+        },
+        "closed_trades": []
+    }
+
+    # Price at 1015.0 (down from 1050.0 peak)
+    current_market_prices = {"RELIANCE.NS": 1015.0}
+    closed = check_exits(current_market_prices, portfolio=portfolio, portfolio_path=portfolio_file)
+
+    assert len(closed) == 1
+    assert closed[0]["ticker"] == "RELIANCE.NS"
+    assert closed[0]["exit_reason"] == "TRAILING_STOP_LOSS_RATCHET"
+    assert "RELIANCE.NS" not in portfolio["positions"]
+    assert len(portfolio["closed_trades"]) == 1
+    assert portfolio["closed_trades"][0]["realized_pnl"] > 0.0
