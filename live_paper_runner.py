@@ -366,7 +366,7 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
         max_rsi_allowed = 65.0
 
     # Initialize PortfolioRiskAgent (gating sector concentration & correlation exposure)
-    portfolio_risk = PortfolioRiskAgent(max_sector_exposure=0.35, max_correlated_exposure=0.05)
+    portfolio_risk = PortfolioRiskAgent(max_sector_exposure=0.30, max_correlated_exposure=0.05)
 
     # Preload / Cache 60-day correlation matrix
     global CORRELATION_MATRIX_CACHE
