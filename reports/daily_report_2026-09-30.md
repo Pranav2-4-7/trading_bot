@@ -1,0 +1,47 @@
+# 📊 TradingBOT Daily Market Performance Report
+> **Date:** `2026-09-30` | **Generated At:** `2026-09-30 15:30:00 IST`
+
+---
+## 📌 Executive Summary
+
+### 🚀 5-Year Macro Trend (0.57 Threshold)
+- **Initial Capital:** INR 100,000.00
+- **Cash Liquidity:** INR 62,505.83
+- **Holdings Value:** INR 33,517.73
+- **Total Portfolio Valuation:** **INR 96,023.56**
+- **Net Return:** **`-3.98%`**
+- **Today's Trades Closed:** `0` (Wins: `0` | Win Rate: `0.0%`)
+- **Today's Realized PnL:** **INR +0.00**
+- **Lifetime Win Rate:** `36.4%` (11 total trades)
+
+*No closed trades for this profile today.*
+
+### 🎯 Ultra-High Conviction (0.68 Threshold)
+- **Initial Capital:** INR 100,000.00
+- **Cash Liquidity:** INR 100,000.00
+- **Holdings Value:** INR 0.00
+- **Total Portfolio Valuation:** **INR 100,000.00**
+- **Net Return:** **`+0.00%`**
+- **Today's Trades Closed:** `0` (Wins: `0` | Win Rate: `0.0%`)
+- **Today's Realized PnL:** **INR +0.00**
+- **Lifetime Win Rate:** `0.0%` (0 total trades)
+
+*No closed trades for this profile today.*
+
+### 📜 Legacy Account (5-Year Macro Mirror)
+- **Initial Capital:** INR 100,000.00
+- **Cash Liquidity:** INR 113.95
+- **Holdings Value:** INR 103,187.95
+- **Total Portfolio Valuation:** **INR 103,301.91**
+- **Net Return:** **`+3.30%`**
+- **Today's Trades Closed:** `0` (Wins: `0` | Win Rate: `0.0%`)
+- **Today's Realized PnL:** **INR +0.00**
+- **Lifetime Win Rate:** `100.0%` (3 total trades)
+
+*No closed trades for this profile today.*
+
+---
+## 🛡️ Risk & Model Drift Status
+- **Evidently AI Drift Evaluation:** Clean / Baseline Monitored
+- **Dynamic Slippage Calculation:** Operational
+- **Micro-Dip & 50 DMA Filters:** Active
