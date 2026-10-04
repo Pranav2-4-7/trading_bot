@@ -101,13 +101,17 @@ def test_calculate_dynamic_threshold_risk_on():
     assert pytest.approx(th_below, 0.001) == 0.72
 
 def test_calculate_dynamic_threshold_risk_off_multiplier():
-    """Test 1.25x scaling multiplier in RISK_OFF conditions."""
+    """Test scaling multiplier in RISK_OFF conditions (config 1.10x default and explicit 1.25x)."""
     base_th = 0.57
     
-    # Price above 200 DMA in RISK_OFF -> 0.57 * 1.25 = 0.7125
-    th_risk_off = calculate_dynamic_threshold(current_price=105.0, dma_200=100.0, base_threshold=base_th, regime="RISK_OFF")
-    assert pytest.approx(th_risk_off, 0.001) == 0.7125
+    # Config default (1.10x) -> 0.57 * 1.10 = 0.627
+    th_risk_off = calculate_dynamic_threshold(current_price=105.0, dma_200=100.0, base_threshold=base_th, regime="RISK_OFF", risk_off_multiplier=1.10)
+    assert pytest.approx(th_risk_off, 0.001) == 0.627
     
-    # Price 10% below 200 DMA in RISK_OFF -> (0.57 + 0.15) * 1.25 = 0.72 * 1.25 = 0.90 -> capped at 0.85
-    th_below_risk_off = calculate_dynamic_threshold(current_price=90.0, dma_200=100.0, base_threshold=base_th, regime="RISK_OFF")
+    # Explicit 1.25x multiplier -> 0.57 * 1.25 = 0.7125
+    th_risk_off_125 = calculate_dynamic_threshold(current_price=105.0, dma_200=100.0, base_threshold=base_th, regime="RISK_OFF", risk_off_multiplier=1.25)
+    assert pytest.approx(th_risk_off_125, 0.001) == 0.7125
+    
+    # Price 10% below 200 DMA in RISK_OFF with 1.25x -> (0.57 + 0.15) * 1.25 = 0.90 -> capped at 0.85
+    th_below_risk_off = calculate_dynamic_threshold(current_price=90.0, dma_200=100.0, base_threshold=base_th, regime="RISK_OFF", risk_off_multiplier=1.25)
     assert th_below_risk_off == 0.85
