@@ -30,12 +30,8 @@ from paper_broker import (
     compute_60d_correlation_matrix,
     check_exits
 )
-from news_ingestor import GlobalNewsIngestor
-from sentiment_analyzer import FinBERTSentimentAnalyzer
+from sentiment_engine import calculate_sentiment
 
-# Instantiate globally
-news_ingestor = GlobalNewsIngestor()
-sentiment_analyzer = FinBERTSentimentAnalyzer()
 SENTIMENT_CACHE = {}
 
 # Global cache to persist historical dataframes and avoid yfinance rate-limiting
@@ -573,31 +569,33 @@ def run_live_paper_trading(strategy=None, profile_id="macro"):
 
             # Fetch global sentiment using cached GDELT and FinBERT scores (15-min cache lifetime)
             global_sentiment = 0.0
+            retail_sentiment = 0.0
             now = time.time()
             if ticker in SENTIMENT_CACHE and (now - SENTIMENT_CACHE[ticker][0]) < 900:
                 global_sentiment = SENTIMENT_CACHE[ticker][1]
-                print(f"  [HYBRID SENTIMENT] {ticker} (CACHED) | Blended Score: {global_sentiment:+.2f}")
+                retail_sentiment = SENTIMENT_CACHE[ticker][2]
+                print(f"  [HYBRID SENTIMENT] {ticker} (CACHED) | Global: {global_sentiment:+.2f} | Retail: {retail_sentiment:+.2f}")
             else:
                 try:
                     company_name = COMPANY_NAME_MAP.get(ticker, ticker.split(".")[0])
-                    headlines = news_ingestor.fetch_recent_news(company_name, days_back=1)
-                    
-                    realtime_score = 0.0
-                    if headlines:
-                        realtime_score = sentiment_analyzer.score_headlines(headlines)
-                    
+                    sentiment_scores = calculate_sentiment(ticker, company_name=company_name)
+                    global_sentiment = sentiment_scores["Global_Sentiment"]
+                    retail_sentiment = sentiment_scores["Retail_Sentiment"]
                     daily_bias = daily_gemini_bias.get(ticker, 0.0)
-                    global_sentiment = 0.7 * daily_bias + 0.3 * realtime_score
-                    SENTIMENT_CACHE[ticker] = (now, global_sentiment)
-                    print(f"  [HYBRID SENTIMENT] {ticker} | Daily Bias (Gemini): {daily_bias:+.2f} | Real-time (FinBERT): {realtime_score:+.2f} | Blended Score: {global_sentiment:+.2f}")
+                    global_sentiment = 0.7 * daily_bias + 0.3 * global_sentiment
+                    SENTIMENT_CACHE[ticker] = (now, global_sentiment, retail_sentiment)
+                    print(f"  [HYBRID SENTIMENT] {ticker} | Daily Bias (Gemini): {daily_bias:+.2f} | Global: {global_sentiment:+.2f} | Retail: {retail_sentiment:+.2f}")
                 except Exception as e:
                     print(f"  [Sentiment Error] Failed to calculate GDELT/FinBERT sentiment for {ticker}: {e}")
                     if ticker in SENTIMENT_CACHE:
                         global_sentiment = SENTIMENT_CACHE[ticker][1]
+                        retail_sentiment = SENTIMENT_CACHE[ticker][2]
                     else:
                         global_sentiment = 0.0
+                        retail_sentiment = 0.0
                 
             tech_row["Global_Sentiment_Score"] = global_sentiment
+            tech_row["Retail_Sentiment_Score"] = retail_sentiment
 
             # Format Date column back to string format for StrategyAgent
             tech_row["Date"] = pd.to_datetime(tech_row["Date"]).dt.strftime('%Y-%m-%d %H:%M:%S')

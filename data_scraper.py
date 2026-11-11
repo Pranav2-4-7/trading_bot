@@ -230,6 +230,10 @@ class IngestionAgent:
 
         # Drop rows where indicators or target couldn't be calculated (edges of data)
         df["Global_Sentiment_Score"] = 0.0
+        # Historical social scores are unavailable; zero is neutral until live
+        # collection supplies a score. Forward-fill keeps gaps neutral/stable.
+        df["Retail_Sentiment_Score"] = 0.0
+        df["Retail_Sentiment_Score"] = df["Retail_Sentiment_Score"].ffill().fillna(0.0)
         df = df.dropna(subset=["MA200", "RSI14", "ATR", "ROC_10"])
 
         # Save feature-engineered data
@@ -295,6 +299,11 @@ class IngestionAgent:
             return
             
         tech_df = pd.read_csv(tech_path)
+        if "Retail_Sentiment_Score" not in tech_df.columns:
+            tech_df["Retail_Sentiment_Score"] = 0.0
+        tech_df["Retail_Sentiment_Score"] = (
+            tech_df["Retail_Sentiment_Score"].ffill().fillna(0.0)
+        )
         fund_df = self.fetch_historical_fundamentals(ticker)
         
         if fund_df.empty:

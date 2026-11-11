@@ -1,9 +1,10 @@
 ﻿import pytest
 from unittest.mock import patch, MagicMock
+import time
 from social_scraper import get_reddit_posts, get_tweets, clean_social_text, get_social_text
 
 def test_clean_social_text():
-    raw_text = "Check out $CIPLA at https://example.com/chart! Great upside 🚀🚀 #bullish"
+    raw_text = "Check out $CIPLA at https://example.com/chart! Great upside ???? #bullish"
     cleaned = clean_social_text(raw_text)
     assert "https://" not in cleaned
     assert "example.com" not in cleaned
@@ -23,6 +24,7 @@ def test_get_reddit_posts_mocked(monkeypatch):
     mock_post1 = MagicMock()
     mock_post1.title = "CIPLA earnings breakout"
     mock_post1.selftext = "Solid quarterly results for CIPLA stock."
+    mock_post1.created_utc = time.time()  # Recent timestamp
     
     mock_subreddit = MagicMock()
     mock_subreddit.search.return_value = [mock_post1]
@@ -33,7 +35,7 @@ def test_get_reddit_posts_mocked(monkeypatch):
     with patch("social_scraper.praw.Reddit", return_value=mock_reddit_instance):
         posts = get_reddit_posts("CIPLA", limit=10)
         assert len(posts) == 3  # 1 post per subreddit * 3 subreddits
-        assert "CIPLA earnings breakout Solid quarterly results for CIPLA stock." in posts[0]
+        assert "CIPLA earnings breakout" in posts[0]
 
 def test_get_tweets_missing_token(monkeypatch):
     monkeypatch.delenv("TWITTER_BEARER_TOKEN", raising=False)

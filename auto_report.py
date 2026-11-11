@@ -4,6 +4,7 @@ import json
 import subprocess
 import datetime
 import logging
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -13,6 +14,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def load_env_file():
+    """Load key-value pairs from .env if present without external dependencies."""
+    env_path = os.path.join(BASE_DIR, ".env")
+    if not os.path.exists(env_path):
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                k = k.strip()
+                v = v.strip().strip("\"'").strip()
+                if k and k not in os.environ:
+                    os.environ[k] = v
+    except Exception as e:
+        logger.warning(f"Could not load .env file: {e}")
 
 
 def get_report_date():
@@ -67,21 +88,30 @@ def git_commit_file(filepath, message):
 
 
 def git_push(pat=None):
-    """Pushes committed changes to origin/main. Uses PAT if provided to avoid credential popup."""
-    remote_url = subprocess.run(
+    """
+    Pushes committed changes to origin/main.
+    Uses PAT if provided to avoid GUI credential manager popups that hang background processes.
+    """
+    remote_proc = subprocess.run(
         ["git", "remote", "get-url", "origin"],
         cwd=BASE_DIR, capture_output=True, text=True
-    ).stdout.strip()
+    )
+    remote_url = remote_proc.stdout.strip()
+    if not remote_url:
+        logger.error("No origin remote found.")
+        return False
 
     push_url = remote_url
     if pat:
-        # Inject PAT into HTTPS URL: https://<PAT>@github.com/user/repo.git
         if remote_url.startswith("https://"):
-            push_url = remote_url.replace("https://", f"https://{pat}@")
-            logger.info("Using PAT-authenticated URL for push.")
+            # Format: https://<PAT>@github.com/owner/repo.git
+            clean_url = remote_url.replace("https://", "")
+            if "@" in clean_url:
+                clean_url = clean_url.split("@", 1)[1]
+            push_url = f"https://{pat}@{clean_url}"
+            logger.info("Using PAT authentication for push.")
 
     env = os.environ.copy()
-    # Disable credential manager to prevent GUI popup hanging
     env["GIT_TERMINAL_PROMPT"] = "0"
 
     logger.info("Pushing to origin/main...")
@@ -98,8 +128,9 @@ def git_push(pat=None):
         return False
 
 
-def run_auto_report(date_str=None, push=True):
+def run_auto_report(date_str=None, push=True, pat=None):
     """Main entry point: generate report, commit each file, push to GitHub."""
+    load_env_file()
     target_date = date_str or get_report_date()
     logger.info(f"=== Auto Report & Push for {target_date} ===")
 
@@ -132,21 +163,17 @@ def run_auto_report(date_str=None, push=True):
         if git_commit_file(readme_file, f"docs(README): Update live performance metrics for {target_date}"):
             commits_made += 1
 
-    if commits_made == 0:
-        logger.info("No new commits to push.")
-        return True
-
-    logger.info(f"Total commits made: {commits_made}")
+    logger.info(f"Total report commits made: {commits_made}")
 
     # 3. Push to GitHub
     if push:
-        pat = os.environ.get("GITHUB_PAT", "")
-        if not pat:
-            logger.warning("GITHUB_PAT not set. Attempting push without PAT (may hang on Windows).")
-            logger.warning("Set GITHUB_PAT environment variable or run: git push origin main")
-        return git_push(pat if pat else None)
+        token = pat or os.environ.get("GITHUB_PAT") or os.environ.get("GITHUB_TOKEN")
+        if not token:
+            logger.warning("GITHUB_PAT / GITHUB_TOKEN not detected in environment or .env.")
+            logger.warning("Please supply via --pat <token> or add GITHUB_PAT=your_token to .env to push automatically.")
+        return git_push(token)
     else:
-        logger.info("Push skipped (push=False). Run 'git push origin main' manually.")
+        logger.info("Push skipped (push=False).")
         return True
 
 
@@ -155,7 +182,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Auto-generate daily report, commit, and push to GitHub.")
     parser.add_argument("--date", type=str, default=None, help="Report date (YYYY-MM-DD). Defaults to today.")
     parser.add_argument("--no-push", action="store_true", help="Skip git push (commit only).")
+    parser.add_argument("--pat", type=str, default=None, help="GitHub Personal Access Token for headless pushing.")
     args = parser.parse_args()
 
-    success = run_auto_report(date_str=args.date, push=not args.no_push)
+    success = run_auto_report(date_str=args.date, push=not args.no_push, pat=args.pat)
     sys.exit(0 if success else 1)

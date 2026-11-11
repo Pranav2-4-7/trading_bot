@@ -1,7 +1,9 @@
-import os
+﻿import os
 import re
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables from .env if present
@@ -11,7 +13,7 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Import praw and tweepy safely
+# Import praw, tweepy, and twikit safely
 try:
     import praw
 except ImportError:
@@ -22,18 +24,16 @@ try:
 except ImportError:
     tweepy = None
 
+try:
+    import twikit
+except ImportError:
+    twikit = None
+
 
 def get_reddit_posts(ticker_symbol, limit=50):
     """
     Searches Reddit subreddits ('IndianStreetBets', 'DalalStreetTalks', 'IndiaInvestments')
     for recent posts mentioning the specific stock ticker.
-    
-    Args:
-        ticker_symbol (str): Stock ticker (e.g., 'CIPLA' or 'CIPLA.NS').
-        limit (int): Maximum number of posts to fetch per subreddit.
-        
-    Returns:
-        list: List of strings containing post titles and body text (selftext).
     """
     clean_ticker = _normalize_ticker(ticker_symbol)
     client_id = os.getenv("REDDIT_CLIENT_ID")
@@ -62,7 +62,6 @@ def get_reddit_posts(ticker_symbol, limit=50):
         for sub_name in subreddits:
             try:
                 subreddit = reddit.subreddit(sub_name)
-                # Reddit's day filter is coarse; enforce a rolling 24-hour window.
                 for post in subreddit.search(clean_ticker, limit=limit, time_filter="day"):
                     created_utc = getattr(post, "created_utc", None)
                     if created_utc is not None and created_utc < cutoff:
@@ -80,74 +79,110 @@ def get_reddit_posts(ticker_symbol, limit=50):
     return posts_text
 
 
-def get_tweets(ticker_symbol, max_results=50):
-    """
-    Searches Twitter (X) for recent tweets mentioning the ticker cash-tag/hashtag filtering out retweets.
-    
-    Args:
-        ticker_symbol (str): Stock ticker (e.g., 'CIPLA' or 'CIPLA.NS').
-        max_results (int): Maximum number of tweets to fetch (10 to 100 for API v2).
-        
-    Returns:
-        list: List of strings containing tweet text.
-    """
-    clean_ticker = _normalize_ticker(ticker_symbol)
-    bearer_token = os.getenv("TWITTER_BEARER_TOKEN")
+async def _fetch_tweets_twikit(clean_ticker, max_results=50):
+    """Asynchronous tweet fetching using twikit web client (free, no paid API needed)."""
+    username = os.getenv("TWITTER_USERNAME")
+    email = os.getenv("TWITTER_EMAIL")
+    password = os.getenv("TWITTER_PASSWORD")
 
-    if not bearer_token:
-        logger.warning("[Twitter] Missing TWITTER_BEARER_TOKEN environment variable. Returning empty list.")
+    if not username or not password:
+        logger.warning("[Twitter/twikit] Missing TWITTER_USERNAME or TWITTER_PASSWORD in environment.")
         return []
 
-    if tweepy is None:
-        logger.warning("[Twitter] tweepy package is not installed. Returning empty list.")
-        return []
+    cookies_path = Path(__file__).resolve().parent / "data" / "twitter_cookies.json"
+    cookies_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # API v2 search_recent_tweets expects max_results between 10 and 100
-    adjusted_max = max(10, min(100, max_results))
+    client = twikit.Client("en-US")
+
+    # Load session cookies if available to avoid aggressive logins
+    logged_in = False
+    if cookies_path.exists():
+        try:
+            client.load_cookies(str(cookies_path))
+            logged_in = True
+        except Exception as e:
+            logger.debug(f"[Twitter/twikit] Could not load cookies: {e}")
+
+    if not logged_in:
+        try:
+            await client.login(
+                auth_info_1=username,
+                auth_info_2=email,
+                password=password,
+                cookies_file=str(cookies_path)
+            )
+        except Exception as e:
+            logger.error(f"[Twitter/twikit] Login failed: {e}")
+            return []
+
     tweets_text = []
-
     try:
-        client = tweepy.Client(bearer_token=bearer_token)
-        query = f"(${clean_ticker} OR #{clean_ticker}) -is:retweet"
-        
-        start_time = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(
-            timespec="seconds"
-        ).replace("+00:00", "Z")
-        response = client.search_recent_tweets(
-            query=query,
-            max_results=adjusted_max,
-            start_time=start_time,
-        )
-        if response and response.data:
-            for tweet in response.data:
-                text = tweet.text.strip()
-                if text:
-                    tweets_text.append(text)
-
+        query = f"${clean_ticker} OR #{clean_ticker}"
+        results = await client.search_tweet(query, "Latest", count=max_results)
+        if results:
+            for tweet in results:
+                t_text = getattr(tweet, "text", "") or ""
+                t_text = t_text.strip()
+                if t_text:
+                    tweets_text.append(t_text)
     except Exception as e:
-        logger.error(f"[Twitter] Error fetching tweets for {clean_ticker}: {e}")
+        logger.error(f"[Twitter/twikit] Search error for {clean_ticker}: {e}")
 
-    logger.info(f"[Twitter] Fetched {len(tweets_text)} tweets for {clean_ticker}")
     return tweets_text
 
 
+def get_tweets(ticker_symbol, max_results=50):
+    """
+    Searches Twitter (X) for recent tweets mentioning the ticker cash-tag/hashtag.
+    Checks Tweepy first if TWITTER_BEARER_TOKEN is provided, otherwise falls back to twikit.
+    """
+    clean_ticker = _normalize_ticker(ticker_symbol)
+
+    # 1. Check Tweepy Bearer Token first if present
+    bearer_token = os.getenv("TWITTER_BEARER_TOKEN")
+    if bearer_token and tweepy is not None:
+        adjusted_max = max(10, min(100, max_results))
+        tweets_text = []
+        try:
+            client = tweepy.Client(bearer_token=bearer_token)
+            query = f"(${clean_ticker} OR #{clean_ticker}) -is:retweet"
+            start_time = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat(
+                timespec="seconds"
+            ).replace("+00:00", "Z")
+            response = client.search_recent_tweets(
+                query=query,
+                max_results=adjusted_max,
+                start_time=start_time,
+            )
+            if response and response.data:
+                for tweet in response.data:
+                    text = tweet.text.strip()
+                    if text:
+                        tweets_text.append(text)
+            logger.info(f"[Twitter/tweepy] Fetched {len(tweets_text)} tweets for {clean_ticker}")
+            return tweets_text
+        except Exception as e:
+            logger.error(f"[Twitter/tweepy] Error fetching tweets for {clean_ticker}: {e}")
+
+    # 2. Free twikit web scraper
+    if twikit is not None and os.getenv("TWITTER_USERNAME") and os.getenv("TWITTER_PASSWORD"):
+        try:
+            tweets = asyncio.run(_fetch_tweets_twikit(clean_ticker, max_results=max_results))
+            logger.info(f"[Twitter/twikit] Fetched {len(tweets)} tweets for {clean_ticker}")
+            return tweets
+        except Exception as e:
+            logger.error(f"[Twitter/twikit] Exception during search: {e}")
+
+    logger.warning("[Twitter] No active Twitter credentials found. Returning empty list.")
+    return []
+
+
 def clean_social_text(text):
-    """
-    Removes URLs, special characters, and normalizes whitespace in text.
-    
-    Args:
-        text (str): Raw post/tweet text.
-        
-    Returns:
-        str: Cleaned text string.
-    """
+    """Removes URLs, special characters, and normalizes whitespace in text."""
     if not text:
         return ""
-    # Remove URLs
     text = re.sub(r'https?://\S+|www\.\S+', '', text)
-    # Remove special characters except basic punctuation and alphanumeric spaces
     text = re.sub(r'[^a-zA-Z0-9\s.,!?\'"-]', '', text)
-    # Normalize whitespace
     text = re.sub(r'\s+', ' ', text).strip()
     return text
 
@@ -162,16 +197,9 @@ def _normalize_ticker(ticker_symbol):
 def get_social_text(ticker_symbol):
     """
     Aggregates Reddit posts and Twitter tweets for a given stock ticker,
-    removes URLs and special characters, and returns a single clean list of strings
-    representing retail chatter.
-    
-    Args:
-        ticker_symbol (str): Stock ticker (e.g., 'CIPLA' or 'CIPLA.NS').
-        
-    Returns:
-        list: Clean list of strings representing the last 24 hours of retail chatter.
+    removes URLs and special characters, and returns a single clean list of strings.
     """
-    _normalize_ticker(ticker_symbol)  # Validate before calling either connector.
+    _normalize_ticker(ticker_symbol)
     logger.info(f"[SocialScraper] Starting social sentiment ingestion for ticker: {ticker_symbol}")
     
     reddit_posts = get_reddit_posts(ticker_symbol)
@@ -182,7 +210,7 @@ def get_social_text(ticker_symbol):
 
     for raw in raw_combined:
         cleaned = clean_social_text(raw)
-        if len(cleaned) > 10:  # Filter out empty or negligible string snippets
+        if len(cleaned) > 10:
             clean_list.append(cleaned)
 
     logger.info(f"[SocialScraper] Completed social text ingestion. Total clean items: {len(clean_list)}")

@@ -18,6 +18,7 @@ class StrategyAgent:
             "BB_Upper_Dist", "BB_Lower_Dist", "BB_Width",
             "ATR", "ATR_Ratio", "Dist_MA50", "Dist_MA200", "ROC_10",
             "Net_Profit_Margin", "Debt_to_Equity", "Global_Sentiment_Score",
+            "Retail_Sentiment_Score",
             "Dist_P", "Dist_R1", "Dist_R2", "Dist_S1", "Dist_S2"
         ]
         # Set default threshold, will be optimized during training
@@ -45,6 +46,13 @@ class StrategyAgent:
         # Ensure sentiment and distance columns exist
         if "Global_Sentiment_Score" not in combined_df.columns:
             combined_df["Global_Sentiment_Score"] = 0.0
+        if "Retail_Sentiment_Score" not in combined_df.columns:
+            combined_df["Retail_Sentiment_Score"] = 0.0
+        combined_df["Retail_Sentiment_Score"] = (
+            combined_df.groupby("Ticker")["Retail_Sentiment_Score"]
+            .ffill()
+            .fillna(0.0)
+        )
         for col in ["Dist_P", "Dist_R1", "Dist_R2", "Dist_S1", "Dist_S2"]:
             if col not in combined_df.columns:
                 combined_df[col] = 0.0
